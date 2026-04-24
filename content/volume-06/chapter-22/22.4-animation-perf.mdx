@@ -1,0 +1,422 @@
+---
+title: "22.4 动画性能：60fps / 120fps、VSync、输入响应性"
+description: "深入解析动画渲染机制、VSync、requestAnimationFrame、输入响应性与高刷新率屏幕优化"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 22 章 运行时性能优化"
+section: "22.4"
+tags: ["60fps", "120fps", "VSync", "requestAnimationFrame", "动画", "输入响应性"]
+difficulty: "进阶"
+prerequisites: ["20.1-rail", "22.1-rendering-optimization"]
+related: ["20.1-rail", "22.1-rendering-optimization", "22.2-js-optimization"]
+crossRefs: ["20.1-rail.mdx", "22.1-rendering-optimization.mdx", "22.2-js-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+流畅的动画是用户体验质量的重要指标。人类视觉系统对运动的不连续性非常敏感——当帧率低于一定阈值时，动画会被感知为"卡顿"或"跳跃"。理解显示系统的物理限制和浏览器的渲染时序，是创建高性能动画的基础。
+
+### 刷新率与帧时间的物理约束
+
+显示器的刷新率（Refresh Rate）决定了屏幕像素的更新频率：
+
+- **60Hz**：每 16.67ms 更新一次，这是桌面显示器和大多数移动设备的标准
+- **90Hz**：每 11.11ms 更新一次，常见于中高端安卓手机
+- **120Hz**：每 8.33ms 更新一次，iPhone Pro、iPad Pro 和高端安卓旗舰支持
+- **144Hz+**：电竞显示器，Web 场景较少见
+
+**VSync（垂直同步）**
+
+VSync 是显示系统的同步机制，确保帧缓冲区（Frame Buffer）的交换发生在显示器刷新周期的起始点。若浏览器在 16ms 周期的中间完成渲染，必须等待下一个 VSync 信号才能显示，导致该帧实际上延迟了一整个周期。
+
+这意味着：**动画的帧时间预算必须严格小于显示器的刷新间隔**。对于 60Hz，预算为 16.67ms；对于 120Hz，预算仅为 8.33ms。
+
+### 浏览器渲染时序与 requestAnimationFrame
+
+`requestAnimationFrame`（rAF）是浏览器提供的与刷新率同步的回调机制。它的核心特性：
+
+1. **与 VSync 对齐**：rAF 回调在每次显示器刷新前触发，确保动画更新与屏幕刷新同步
+2. **自动节流**：在后台标签页中自动暂停，节省电量
+3. **合并回调**：同一帧中的多个 rAF 调用被合并为单次执行
+
+**rAF 回调中的时间预算：**
+
+```
+VSync 信号
+    |
+    v
+rAF 回调执行（JavaScript）
+    |
+    v
+Style 计算
+    |
+    v
+Layout（若触发布局属性）
+    |
+    v
+Paint（若触发绘制属性）
+    |
+    v
+Composite（合成器线程，通常与主线程并行）
+    |
+    v
+下一个 VSync 信号（必须在此之前完成）
+```
+
+对于 60fps，整个流水线必须在 16.67ms 内完成。RAIL 模型建议将 JavaScript 执行控制在 10ms 以内，为浏览器内部工作预留 6ms 缓冲。
+
+### 高刷新率屏幕的挑战
+
+120Hz 屏幕的普及带来了新的性能挑战：
+
+1. **帧时间减半**：从 16.67ms 降至 8.33ms，JavaScript 预算从 10ms 降至约 5ms
+2. **主线程压力倍增**：相同的动画逻辑在 120Hz 下需要两倍的主线程时间
+3. **合成器线程瓶颈**：虽然合成阶段在独立线程，但过多的合成层更新也可能压垮 GPU
+
+**`matchMedia` 检测刷新率：**
+
+```javascript
+// 检测是否支持 120Hz
+const isHighRefreshRate = window.matchMedia(
+  '(refresh-rate: 120hz)'
+).matches;
+
+// 更通用的方法：通过 rAF 间隔推断
+function detectRefreshRate(callback) {
+  let lastTime = performance.now();
+  let frames = 0;
+  const times = [];
+
+  function measure() {
+    const now = performance.now();
+    times.push(now - lastTime);
+    lastTime = now;
+    frames++;
+
+    if (frames < 30) {
+      requestAnimationFrame(measure);
+    } else {
+      // 取中位数作为刷新间隔
+      times.sort((a, b) => a - b);
+      const median = times[Math.floor(times.length / 2)];
+      const fps = Math.round(1000 / median);
+      callback(fps);
+    }
+  }
+
+  requestAnimationFrame(measure);
+}
+```
+
+### 输入响应性与动画的交互
+
+当用户在与动画交互时（如拖拽滑块、缩放地图），输入事件和动画更新需要在同一帧内完成，才能产生"跟手"的感觉。
+
+**输入到显示的完整链路：**
+
+```
+用户触摸/移动鼠标
+    |
+    v
+操作系统接收硬件中断（~1ms）
+    |
+    v
+浏览器合成器线程接收输入事件（~2-4ms）
+    |
+    v
+若事件需要主线程处理：排队等待主线程空闲
+    |
+    v
+主线程执行事件处理程序（JavaScript）
+    |
+    v
+更新动画状态，触发 rAF
+    |
+    v
+渲染流水线（Style -> Layout -> Paint -> Composite）
+    |
+    v
+下一个 VSync 显示更新
+```
+
+"跟手感"的关键在于**输入事件到像素更新的延迟**（Motion-to-Photon Latency）。理想情况下，这一延迟应 < 20ms。主线程的长任务、复杂的渲染流水线都会增加这一延迟。
+
+## 用法
+
+### 使用 requestAnimationFrame 实现流畅动画
+
+```javascript
+// 基于 rAF 的动画循环
+function animateElement(element, targetX, duration) {
+  const startX = parseFloat(element.style.transform.replace(/[^0-9.-]/g, '')) || 0;
+  const startTime = performance.now();
+
+  function step(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    // 使用 ease-out 缓动
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const currentX = startX + (targetX - startX) * eased;
+
+    // 只使用合成友好的属性
+    element.style.transform = `translate3d(${currentX}px, 0, 0)`;
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+```
+
+### 使用 CSS 动画替代 JavaScript 动画
+
+```css
+/* CSS 动画在合成器线程运行，不阻塞主线程 */
+.smooth-slide {
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.smooth-slide.active {
+  transform: translateX(200px);
+}
+
+/* 使用 will-change 提前优化 */
+.animated-card {
+  will-change: transform, opacity;
+  transition: transform 0.3s, opacity 0.3s;
+}
+
+.animated-card:hover {
+  transform: scale(1.05) translateY(-5px);
+  opacity: 0.9;
+}
+```
+
+### 使用 Web Animations API（WAAPI）
+
+```javascript
+// WAAPI 提供 JavaScript 控制能力，同时享受浏览器优化
+const animation = element.animate([
+  { transform: 'translateX(0)', opacity: 0 },
+  { transform: 'translateX(200px)', opacity: 1 }
+], {
+  duration: 300,
+  easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  fill: 'forwards',
+});
+
+// 控制动画
+animation.pause();
+animation.play();
+animation.reverse();
+animation.cancel();
+
+// 监听完成
+animation.onfinish = () => {
+  element.style.willChange = 'auto';
+};
+```
+
+WAAPI 的优势在于动画在浏览器的动画引擎中执行，可以：
+- 自动与 VSync 同步
+- 在合成器线程运行（对于 transform/opacity）
+- 支持硬件加速的插值
+- 自动处理动画的暂停/恢复
+
+### 拖拽交互的输入响应优化
+
+```javascript
+// 高响应性拖拽实现
+class SmoothDraggable {
+  constructor(element) {
+    this.element = element;
+    this.position = { x: 0, y: 0 };
+    this.velocity = { x: 0, y: 0 };
+    this.isDragging = false;
+    this.lastTime = 0;
+
+    // 使用 Pointer Events 统一鼠标和触摸输入
+    element.addEventListener('pointerdown', this.onPointerDown.bind(this));
+  }
+
+  onPointerDown(e) {
+    this.isDragging = true;
+    this.lastX = e.clientX;
+    this.lastY = e.clientY;
+    this.lastTime = performance.now();
+
+    // 捕获指针，确保即使移出元素也能接收事件
+    this.element.setPointerCapture(e.pointerId);
+
+    this.element.addEventListener('pointermove', this.onPointerMove.bind(this));
+    this.element.addEventListener('pointerup', this.onPointerUp.bind(this));
+
+    // 立即响应：取消当前动画，直接跟随指针
+    this.cancelAnimation();
+  }
+
+  onPointerMove(e) {
+    if (!this.isDragging) return;
+
+    const now = performance.now();
+    const dt = now - this.lastTime;
+
+    // 直接更新位置（最低延迟）
+    this.position.x += e.clientX - this.lastX;
+    this.position.y += e.clientY - this.lastY;
+
+    // 计算速度用于惯性
+    if (dt > 0) {
+      this.velocity.x = (e.clientX - this.lastX) / dt;
+      this.velocity.y = (e.clientY - this.lastY) / dt;
+    }
+
+    // 使用 rAF 批量更新渲染
+    if (!this.rafId) {
+      this.rafId = requestAnimationFrame(() => this.render());
+    }
+
+    this.lastX = e.clientX;
+    this.lastY = e.clientY;
+    this.lastTime = now;
+  }
+
+  render() {
+    this.rafId = null;
+    // 只使用 transform，避免布局
+    this.element.style.transform =
+      `translate3d(${this.position.x}px, ${this.position.y}px, 0)`;
+  }
+
+  onPointerUp() {
+    this.isDragging = false;
+    this.element.releasePointerCapture(e.pointerId);
+
+    // 启动惯性动画
+    this.startInertia();
+  }
+
+  startInertia() {
+    const decay = 0.95;
+    const minVelocity = 0.1;
+
+    const step = () => {
+      this.velocity.x *= decay;
+      this.velocity.y *= decay;
+
+      this.position.x += this.velocity.x * 16; // 假设 60fps
+      this.position.y += this.velocity.y * 16;
+
+      this.render();
+
+      if (Math.abs(this.velocity.x) > minVelocity ||
+          Math.abs(this.velocity.y) > minVelocity) {
+        this.rafId = requestAnimationFrame(step);
+      }
+    };
+
+    this.rafId = requestAnimationFrame(step);
+  }
+
+  cancelAnimation() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+}
+```
+
+### 使用 CSS `content-visibility` 优化滚动动画
+
+```css
+/* 大量卡片滚动时的性能优化 */
+.card-list {
+  /* 确保每个卡片是独立的渲染层 */
+  contain: layout paint;
+}
+
+.card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
+  /* 视口外的卡片跳过布局和绘制 */
+}
+
+.card.visible {
+  /* 进入视口的卡片正常渲染 */
+  content-visibility: visible;
+}
+```
+
+## 实践
+
+### 案例：120Hz 下的地图缩放动画优化
+
+某地图应用在 120Hz iPad Pro 上缩放时帧率不稳定，从 120fps 骤降至 40fps。
+
+**诊断：**
+
+1. Performance 面板显示每帧 JavaScript 执行 6ms，Style 3ms，Paint 2ms，合计 11ms
+2. 11ms > 8.33ms 预算，导致每隔一帧才能显示，实际帧率约 60fps
+3. Paint 阶段耗时异常，因为缩放时大量地图标记（Marker）的 `box-shadow` 被重绘
+
+**优化方案：**
+
+| 优化项 | 措施 | 效果 |
+|--------|------|------|
+| 移除昂贵样式 | 缩放期间临时移除 `box-shadow` 和 `border-radius` | Paint 2ms -> 0.5ms |
+| 标记批量更新 | 使用 `transform: scale()` 替代 `width`/`height` | 消除 Layout |
+| 视口裁剪 | 只渲染视口内及边缘 20% 的标记 | JS 6ms -> 2ms |
+| 降级策略 | 快速缩放时切换为低分辨率瓦片 | Style 3ms -> 1ms |
+
+**结果：** 每帧总时间从 11ms 降至 3.5ms，稳定达到 120fps。
+
+### 动画性能决策矩阵
+
+| 场景 | 推荐方案 | 原因 |
+|------|----------|------|
+| 简单 CSS 过渡 | CSS `transition` | 合成器线程运行，零主线程开销 |
+| 复杂序列动画 | WAAPI | JavaScript 控制 + 浏览器优化 |
+| 物理/游戏动画 | `requestAnimationFrame` + Canvas/WebGL | 每帧完全控制 |
+| 滚动联动动画 | CSS `animation-timeline` / ScrollTimeline | 浏览器原生优化滚动同步 |
+| 输入跟随（拖拽） | `pointermove` + `rAF` 批量渲染 | 最低输入延迟 |
+| 大量元素动画 | CSS `content-visibility` + 虚拟化 | 减少渲染元素数量 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 使用 `setInterval` 做动画 | `setInterval` 不与 VSync 同步，且可能堆积回调 | 动画不流畅，帧率不稳定，主线程阻塞 |
+| 在 rAF 中修改布局属性 | 每帧修改 `width`/`height`/`top`/`left` | 每帧触发回流，无法达到 60fps |
+| 忽略 120Hz 的预算减半 | 在 120Hz 设备上使用 60Hz 的优化策略 | 帧时间超预算，实际帧率远低于 120fps |
+| 过度绘制（Overdraw） | 多个半透明层叠加，GPU 每像素多次绘制 | GPU 负载过高，发热和掉帧 |
+| 动画结束后不清理 | `rAF` 循环在动画结束后继续运行 | 不必要的 CPU/GPU 消耗，电池耗尽 |
+| 触摸事件不 `preventDefault` | 浏览器默认滚动与自定义动画冲突 | 动画卡顿，用户体验差 |
+| 忽略 `prefers-reduced-motion` | 对有前庭功能障碍的用户播放剧烈动画 | 可访问性问题，用户不适 |
+
+<Callout type="warning" title="120Hz 动画的降级策略">
+在 120Hz 设备上，若动画逻辑无法在 8.33ms 内完成，不应强行追求 120fps。更好的策略是：1) 检测刷新率，根据预算调整动画复杂度；2) 快速交互时简化渲染（如隐藏阴影、降低细节）；3) 使用 CSS `transition` 和 WAAPI 让浏览器自动优化；4) 对于无法优化的场景，稳定 60fps 比波动 120fps 体验更好。可以使用 `matchMedia('(update: fast)')` 检测设备是否支持高刷新率。
+</Callout>
+
+<Quiz
+  question="为什么 `requestAnimationFrame` 比 `setInterval` 更适合做动画？"
+  options={[
+    "rAF 的回调执行速度更快",
+    "rAF 与显示器的 VSync 信号对齐，确保动画更新与屏幕刷新同步；后台标签自动暂停，节省电量",
+    "rAF 支持更多浏览器",
+    "rAF 可以访问更多 DOM API"
+  ]}
+  correctIndex={1}
+  explanation="requestAnimationFrame 的核心优势在于它与显示器的刷新周期同步。浏览器会在每次 VSync 前调用 rAF 回调，确保动画更新与屏幕刷新精确对齐。setInterval 基于固定时间间隔，不与 VSync 同步，可能导致动画更新发生在两次刷新之间，产生视觉撕裂或不必要的计算。此外，rAF 在后台标签页自动暂停，是更节能的选择。"
+/>
+
+<Quiz
+  question="在 120Hz 屏幕上实现流畅动画，每帧的总时间预算大约是多少？"
+  options={["16.67ms", "8.33ms", "33.33ms", "4ms"]}
+  correctIndex={1}
+  explanation="120Hz 意味着屏幕每秒刷新 120 次，每次刷新的间隔为 1000ms / 120 = 8.33ms。为了确保每帧都能在下一个 VSync 前完成，整个渲染流水线（JavaScript + Style + Layout + Paint + Composite）必须在 8.33ms 内完成。这比 60Hz 的 16.67ms 预算减少了一半，对主线程性能提出了更高要求。"
+/>

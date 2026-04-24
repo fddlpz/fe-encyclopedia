@@ -1,0 +1,191 @@
+---
+title: "11.5 Hooks 规则与原理：Hooks 调用规则、Hooks 链表结构、闭包陷阱"
+description: "Hooks 调用规则、Hooks 链表结构、闭包陷阱"
+volume: "卷四：框架与状态管理"
+chapter: "第 11 章 React 原理与生态"
+section: "11.5"
+tags: ["Hooks规则", "闭包陷阱", "memoizedState", "链表"]
+difficulty: "基础"
+prerequisites: []
+related: ["11.4-hooks", "11.6-rendering"]
+crossRefs: ["6.4-closure"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+Hooks 的简洁 API 背后隐藏着精密的内部实现。理解 Hooks 的调用规则和底层数据结构，是避免闭包陷阱、写出健壮 React 代码的关键。
+
+### Hooks 的两条调用规则
+
+React 通过 ESLint 插件 `react-hooks/rules-of-hooks` 强制两条规则：
+
+1. **只在最顶层调用 Hooks**：不要在循环、条件或嵌套函数中调用 Hooks。
+2. **只在 React 函数中调用 Hooks**：在函数组件或自定义 Hook 中调用，不要在普通 JavaScript 函数中调用。
+
+这些规则并非人为限制，而是由 Hooks 的底层实现机制决定的。
+
+### Hooks 的链表结构
+
+React 内部通过单向链表管理每个组件的 Hooks 状态。每个函数组件对应一个 Fiber 节点，Fiber 的 `memoizedState` 属性指向第一个 Hook 的状态节点。每个 Hook 节点包含：
+
+- `memoizedState`：Hook 缓存的状态值（state、effect、memo 等）。
+- `baseState` / `baseQueue`：用于并发更新的基础状态。
+- `queue`：待处理的更新队列（state 的 dispatch 队列）。
+- `next`：指向下一个 Hook 节点的指针。
+
+```
+Fiber.memoizedState
+    ↓
+useState (count) → useEffect (subscription) → useRef (domNode) → null
+```
+
+当组件重新渲染时，React 按顺序遍历这个链表，将第 N 个 Hook 调用与链表中的第 N 个节点对应。如果在条件语句中调用 Hook，链表的顺序会发生错位，导致状态混乱。
+
+```jsx
+// 错误：条件调用破坏链表顺序
+if (condition) {
+  const [state, setState] = useState(0); // 条件为 false 时跳过此 Hook
+}
+const [other, setOther] = useState(0); // 错位！other 拿到了 state 的节点
+```
+
+### useState 的实现原理（简化）
+
+```js
+// 极度简化的 useState 原理示意
+let hookIndex = 0;
+const hooks = [];
+
+function useState(initialValue) {
+  const state = hooks[hookIndex] !== undefined ? hooks[hookIndex] : initialValue;
+  hooks[hookIndex] = state;
+  const currentIndex = hookIndex;
+  hookIndex++;
+
+  const setState = (newValue) => {
+    hooks[currentIndex] = newValue;
+    reRenderComponent(); // 触发重新渲染
+  };
+
+  return [state, setState];
+}
+```
+
+真实实现远比这复杂，涉及 Fiber 架构、更新队列、批量处理和并发调度。
+
+### 闭包陷阱的深层原因
+
+Hooks 的闭包陷阱本质上是因为函数组件每次渲染都会重新执行，Hook 回调中捕获的是该次渲染时的 props 和 state 快照。
+
+```jsx
+function ChatRoom({ roomId }) {
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    const connection = createConnection(roomId); // 捕获了本次渲染的 roomId
+    connection.connect();
+    return () => connection.disconnect();
+  }, []); // 错误：遗漏 roomId，导致连接永远不会随 roomId 变化而重建
+}
+```
+
+React 的解决方案：
+
+1. **正确声明依赖数组**：让 effect 在依赖变化时重新执行。
+2. **使用 ref 保存可变值**：`useRef` 保存的值不触发渲染，可在事件处理器中读取最新值。
+3. **使用函数式更新**：`setState(prev => ...)` 不依赖当前渲染的快照。
+
+### useEffect 的依赖数组比较
+
+React 使用 `Object.is` 比较依赖数组中的值。对于对象和函数，比较的是引用身份而非内容。这意味着内联创建的对象/函数每次渲染都是新引用，会导致 effect 不必要的重新执行。
+
+```jsx
+// 每次渲染都创建新对象，导致 effect 每次都执行
+useEffect(() => {
+  fetch('/api', { body: JSON.stringify({ id }) });
+}, [{ id }]); // 错误：对象引用每次不同
+
+// 修正：依赖原始值
+useEffect(() => {
+  fetch('/api', { body: JSON.stringify({ id }) });
+}, [id]);
+```
+
+## 用法
+
+```jsx
+// 使用 useRef 避免闭包陷阱（读取最新值但不触发 effect）
+function Timer() {
+  const [count, setCount] = useState(0);
+  const countRef = useRef(count);
+  countRef.current = count;
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log(countRef.current); // 始终读取最新值
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // 无需依赖 count
+
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+```
+
+## 实践
+
+### ESLint 插件配置
+
+```js
+// .eslintrc.js
+module.exports = {
+  plugins: ['react-hooks'],
+  rules: {
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn'
+  }
+};
+```
+
+`exhaustive-deps` 规则会自动检查 effect 的依赖数组是否完整。在某些高级场景下（如有意使用空依赖数组），可通过注释禁用：
+
+```jsx
+useEffect(() => {
+  // 只在挂载时执行，依赖遗漏是故意的
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+```
+
+### 自定义 Hook 的命名约定
+
+自定义 Hook 必须以 `use` 开头，这使得 ESLint 插件能够自动应用 Hooks 规则。命名应清晰表达 Hook 的用途：
+
+- `useWindowSize`：监听窗口尺寸变化。
+- `useDebounce`：对值进行防抖处理。
+- `usePrevious`：获取上一次渲染的值。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 条件调用 Hook | 状态错乱、渲染异常 | 将条件逻辑移到 Hook 内部 |
+| 依赖数组遗漏 | Stale Closure、逻辑异常 | 启用 exhaustive-deps；使用函数式更新 |
+| 依赖数组包含对象/数组 | effect 无限循环或频繁执行 | 将对象拆分为原始值依赖；或使用 useMemo 稳定引用 |
+| 在循环中调用 Hook | 与条件调用相同的问题 | 将循环内容提取为子组件，在子组件中调用 Hook |
+| useRef 在 deps 中使用 | ref.current 变化不触发重新渲染 | 不要依赖 ref.current；使用 state 或 callback ref |
+
+## 测验
+
+<Quiz
+  question="为什么 Hooks 不能在条件语句中调用？"
+  options={["React 的设计限制", "会破坏 Hooks 链表的顺序对应关系", "会导致语法错误", "性能原因"]}
+  correctIndex={1}
+  explanation="React 通过链表按调用顺序存储 Hook 状态。如果在条件中调用 Hook，某些渲染会跳过该 Hook，导致后续 Hook 与链表节点错位，状态混乱。"
+/>
+
+<Quiz
+  question="useEffect 的依赖数组使用什么方法比较依赖值？"
+  options={["浅比较", "深比较", "Object.is", "=== 严格相等"]}
+  correctIndex={2}
+  explanation="React 使用 Object.is 比较依赖数组中的值。Object.is 与 === 类似，但处理了 NaN 和 -0/+0 的特殊情况。"
+/>

@@ -1,0 +1,333 @@
+---
+title: "20.4 性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest"
+description: "深入对比 Lighthouse、PageSpeed Insights、WebPageTest 三大性能工具的原理、使用方法和实战技巧"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 20 章 Web 性能指标体系"
+section: "20.4"
+tags: ["Lighthouse", "PageSpeed", "WebPageTest", "性能测试", "CI/CD"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals", "20.3-other-metrics"]
+related: ["20.2-core-web-vitals", "20.3-other-metrics", "21.1-resource-priority"]
+crossRefs: ["20.2-core-web-vitals.mdx", "20.3-other-metrics.mdx", "21.1-resource-priority.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+性能优化需要可量化的反馈循环，而性能评分工具正是这个循环的核心。Lighthouse、PageSpeed Insights 和 WebPageTest 是前端性能工程中最常用的三大工具，它们分别代表了"本地实验室测试"、"云端实验室+真实用户数据融合"和"深度网络诊断"三种方法论。
+
+### Lighthouse 的评分算法
+
+Lighthouse 是 Google 开发的开源自动化工具，集成于 Chrome DevTools、Node.js CLI 和 CI/CD 流水线。其性能评分（0~100）基于加权计算的指标组合。
+
+**Lighthouse 10 的权重分配：**
+
+| 指标 | 权重 | 类型 | 测量方式 |
+|------|------|------|----------|
+| LCP（最大内容绘制） | 25% | 实验室估计 | 合成监控 |
+| INP（交互到下一次绘制） | 25% | 实验室估计 | 合成监控（使用 TBT 近似） |
+| CLS（累积布局偏移） | 25% | 实验室估计 | 合成监控 |
+| TBT（总阻塞时间） | 15% | 实验室专用 | 合成监控 |
+| SI（速度指数） | 10% | 实验室专用 | 合成监控 |
+
+**评分曲线的对数正态分布：**
+
+Lighthouse 的评分并非线性映射。以 LCP 为例：
+- 0~2.5s：分数从 0 快速上升到约 90（对数曲线）
+- 2.5~4.0s：分数从 90 缓慢下降到约 50
+- > 4.0s：分数趋近于 0
+
+这种设计的哲学是：从"差"优化到"及格"相对容易（曲线陡峭段），但从"及格"到"优秀"需要指数级的努力（曲线平缓段）。
+
+**模拟环境的校准：**
+
+Lighthouse 默认使用"模拟的 Moto G Power"配置：
+- CPU：4 核，降速 4 倍（CPU throttling）
+- 网络：RTT 150ms，下行 1.6Mbps，上行 0.768Mbps（模拟慢 4G）
+- 视口：412×823（DPR 1.75）
+
+这种校准基于 CrUX 数据中第 75 百分位的真实设备分布。但需要注意的是，模拟降速（Simulated Throttling）和实际降速（Applied Throttling）存在差异：模拟降速通过预测模型估算降速后的性能，而不真正限制 CPU，因此结果可能与真实设备有偏差。
+
+### PageSpeed Insights（PSI）的双数据源融合
+
+PSI 是 Google 提供的在线服务，其独特之处在于同时展示：
+1. **Lab Data**：来自 Lighthouse 的合成测试结果
+2. **Field Data**：来自 Chrome 用户体验报告（CrUX）的真实用户数据（过去 28 天）
+
+**PSI 的数据融合逻辑：**
+
+当 URL 在 CrUX 中有足够数据（通常需要数百次访问）时，PSI 优先展示 Field Data。若数据不足，则仅展示 Lab Data。Field Data 包含 LCP、INP、CLS、FCP、TTFB 的分布直方图（good / needs improvement / poor 的占比）。
+
+PSI 还提供了一个关键洞察：**Origin 级别的汇总数据**。即使某个具体 URL 数据不足，PSI 也可能展示整个域名（Origin）的汇总性能数据。
+
+### WebPageTest 的深度诊断能力
+
+WebPageTest（WPT）由 Catchpoint 维护，是专业性能工程师的首选工具。与 Lighthouse 不同，WPT 使用**真实浏览器在真实设备上运行**（或通过代理精确模拟），提供毫秒级的网络瀑布图和渲染过程视频。
+
+**WPT 的核心能力：**
+
+- **多地点测试**：从全球 40+ 个测试节点发起测试，评估 CDN 效果
+- **真实设备**：提供 iPhone、Pixel 等真实移动设备测试（非模拟器）
+- **网络瀑布图**：展示每个请求的 DNS、TCP、TLS、TTFB、下载各阶段时间
+- **渲染过程视频**：录制页面加载的每一帧，可视化视觉进度
+- **对比测试（Filmstrip Comparison）**：并排对比两个版本的加载过程
+- **自定义脚本**：支持高级测试脚本（如登录、填写表单后测试）
+
+**WPT 的测试配置参数：**
+
+```
+- 连接类型：Cable (5/1 Mbps, 28ms RTT)、DSL (1.5/384 Kbps, 50ms RTT)、
+  3G Fast (1.6/768 Kbps, 150ms RTT)、3G Slow (780/330 Kbps, 200ms RTT)、
+  4G (9/1.5 Mbps, 170ms RTT)、Native (无限制)
+- 浏览器：Chrome、Firefox、Safari、Edge
+- 设备：Desktop、Moto G4、iPhone X、Pixel 2 等
+- 测试次数：1~9 次（取中位数）
+```
+
+## 用法
+
+### Lighthouse CI 集成
+
+```bash
+# 安装 Lighthouse CI
+npm install --save-dev @lhci/cli
+```
+
+```javascript
+// lighthouserc.js - 完整配置示例
+module.exports = {
+  ci: {
+    collect: {
+      // 测试 URL 列表
+      url: [
+        'http://localhost:3000/',
+        'http://localhost:3000/product/123',
+        'http://localhost:3000/cart'
+      ],
+      // 每个 URL 运行 3 次取中位数
+      numberOfRuns: 3,
+      // 使用静态导出的站点
+      staticDistDir: './dist',
+      // 或者启动开发服务器进行测试
+      // startServerCommand: 'npm run start',
+      // startServerReadyPattern: 'Ready on',
+      // startServerReadyTimeout: 30000,
+      settings: {
+        // 预设：desktop 或 mobile（默认）
+        preset: 'desktop',
+        // 只运行性能审计
+        onlyCategories: ['performance'],
+        // 跳过某些审计
+        skipAudits: ['uses-http2'],
+        // 自定义 Chrome 启动参数
+        chromeFlags: '--no-sandbox --disable-gpu',
+      },
+    },
+    assert: {
+      // 断言策略
+      assertions: {
+        // 性能分类总分
+        'categories:performance': ['error', { minScore: 0.9 }],
+        // 具体指标阈值
+        'largest-contentful-paint': ['error', { maxNumericValue: 2500 }],
+        'total-blocking-time': ['warn', { maxNumericValue: 200 }],
+        'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
+        // 资源预算
+        'resource-summary:document:size': ['warn', { maxNumericValue: 20000 }],
+        'resource-summary:script:size': ['warn', { maxNumericValue: 300000 }],
+        'resource-summary:image:size': ['warn', { maxNumericValue: 1000000 }],
+        // 诊断项
+        'unused-javascript': ['warn', { maxLength: 2 }],
+        'render-blocking-resources': ['error', { maxLength: 0 }],
+      },
+    },
+    upload: {
+      // 上传到临时公共存储（用于 PR 评论）
+      target: 'temporary-public-storage',
+      // 或上传到自托管的 LHCI 服务器
+      // target: 'lhci',
+      // serverBaseUrl: 'https://lhci.example.com',
+      // token: process.env.LHCI_TOKEN,
+    },
+    server: {
+      // LHCI 服务器配置（如自托管）
+      storage: {
+        storageMethod: 'sql',
+        sqlDialect: 'sqlite',
+        sqlDatabasePath: './lhci.db',
+      },
+    },
+  },
+};
+```
+
+```yaml
+# .github/workflows/lighthouse.yml
+name: Lighthouse CI
+on: [push, pull_request]
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - name: Run Lighthouse CI
+        run: |
+          npm install -g @lhci/cli
+          lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+```
+
+### 使用 WebPageTest API 进行自动化测试
+
+```bash
+# 使用 WebPageTest Node.js API
+npm install webpagetest
+```
+
+```javascript
+const WebPageTest = require('webpagetest');
+const wpt = new WebPageTest('www.webpagetest.org', process.env.WPT_API_KEY);
+
+// 运行测试并获取关键指标
+wpt.runTest('https://example.com', {
+  location: 'Dulles:Chrome',
+  connectivity: '3GFast',
+  runs: 3,
+  firstViewOnly: false,
+  video: true,
+  lighthouse: true, // 同时运行 Lighthouse
+}, (err, data) => {
+  if (err) return console.error(err);
+
+  const result = data.data.median.firstView;
+  console.log({
+    url: data.data.url,
+    summary: data.data.summary,
+    // 核心指标
+    loadTime: result.loadTime,
+    ttfb: result.TTFB,
+    startRender: result.render,
+    speedIndex: result.SpeedIndex,
+    visuallyComplete: result.visualComplete,
+    // Core Web Vitals（如可用）
+    lcp: result['chromeUserTiming.LargestContentfulPaint'],
+    cls: result['chromeUserTiming.CumulativeLayoutShift'],
+    // 资源统计
+    requests: result.requests.length,
+    bytesIn: result.bytesIn,
+    // 瀑布图链接
+    waterfall: result.images.waterfall,
+    filmstrip: result.images.filmstrip,
+  });
+});
+```
+
+### 解读 Lighthouse 报告的关键诊断项
+
+```
+Performance 评分: 72/100
+
+Metrics:
+- LCP: 2.8s (needs improvement)
+- TBT: 380ms (poor)
+- CLS: 0.05 (good)
+- SI: 3.2s (needs improvement)
+
+Opportunities (预估节省):
+- Eliminate render-blocking resources: 1.2s
+- Properly size images: 0.8s
+- Reduce unused JavaScript: 0.5s
+- Efficiently encode images: 0.3s
+
+Diagnostics:
+- Avoid enormous network payloads: Total size was 3,800 KB
+- Minimize main-thread work: 3.2s
+- Reduce JavaScript execution time: 1.8s
+- Avoid chaining critical requests: 4 chains found
+```
+
+## 实践
+
+### 案例：Lighthouse 评分从 42 提升到 95 的完整路径
+
+某企业官网的 Lighthouse Performance 评分初始为 42。
+
+**阶段一：诊断（评分 42 -> 55）**
+
+| 诊断项 | 问题 | 优化 | 评分影响 |
+|--------|------|------|----------|
+| Render-blocking resources | 3 个 CSS 和 2 个 JS 阻塞首屏 | 内联关键 CSS，异步加载非关键 JS | +8 |
+| Properly size images | 使用 2000px 宽图片在 400px 容器中 | 添加 `srcset`，提供 400/800/1200px 版本 | +5 |
+
+**阶段二：资源优化（评分 55 -> 78）**
+
+| 诊断项 | 问题 | 优化 | 评分影响 |
+|--------|------|------|----------|
+| Efficiently encode images | PNG 格式，无压缩 | 转换为 WebP/AVIF，质量 85 | +10 |
+| Reduce unused JavaScript | 打包了完整的 lodash（70KB） | 改用 `lodash-es` + Tree Shaking | +8 |
+| Enable text compression | 未启用 Gzip/Brotli | Nginx 启用 Brotli | +5 |
+
+**阶段三：运行时优化（评分 78 -> 95）**
+
+| 诊断项 | 问题 | 优化 | 评分影响 |
+|--------|------|------|----------|
+| Minimize main-thread work | hydration 耗时 1.2s | 使用 React 18 `hydrateRoot` + `Suspense` 边界 | +10 |
+| Reduce JS execution time | 第三方脚本（分析、客服）阻塞主线程 | 使用 `async`/`defer` + Partytown 将非关键脚本移至 Web Worker | +7 |
+
+### 工具选择决策矩阵
+
+| 场景 | 推荐工具 | 原因 |
+|------|----------|------|
+| 本地开发快速验证 | Chrome DevTools Lighthouse | 零配置，即时反馈 |
+| CI/CD 门禁 | Lighthouse CI | 可编程断言，GitHub 集成 |
+| 真实用户数据查询 | PageSpeed Insights | 直接获取 CrUX Field Data |
+| 全球 CDN 效果评估 | WebPageTest | 多地点真实设备测试 |
+| 竞品性能对标 | WebPageTest Filmstrip | 视觉对比直观 |
+| 网络层深度诊断 | WebPageTest 瀑布图 | 毫秒级请求阶段分解 |
+| SEO 与性能综合评估 | PageSpeed Insights | 同时展示 Core Web Vitals 和 SEO 评分 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 正确做法 |
+|------|------|----------|
+| 追求 100 分而过度优化 | Lighthouse 100 分不代表完美用户体验，某些优化（如内联所有资源）可能损害缓存效率 | 以真实用户 INP/LCP/CLS 为核心目标，Lighthouse 分数作为辅助参考 |
+| 忽视测试环境差异 | 同一页面在本地 Lighthouse（高端机）和 CI（容器）中分数可能相差 20+ | 固定测试环境，使用 Lighthouse CI 的 Docker 镜像保持一致性 |
+| 仅测试首页 | 产品详情页、购物车、结账流程往往是性能瓶颈 | 建立关键页面清单，确保所有页面纳入 CI 测试 |
+| 混淆模拟降速和应用降速 | Lighthouse 默认使用 Simulated Throttling（预测模型），可能与真实设备差异较大 | 关键测试使用 Applied Throttling（真正限制 CPU/网络）或真实设备 |
+| 过度依赖 PSI 的单次结果 | PSI 结果受服务器当前负载、CDN 缓存状态影响，单次测试不代表常态 | 多次测试取中位数，或查看 CrUX 的 28 天趋势 |
+| 忽略 WPT 的重复视图（Repeat View） | 仅关注 First View 而忽略 Repeat View，可能遗漏缓存策略问题 | 同时分析 First View（冷缓存）和 Repeat View（热缓存） |
+| 将第三方脚本的性能问题视为不可优化 | 分析、广告、客服脚本常被归为"无法优化" | 使用 `async`/`defer`、预连接、Partytown、或自行托管关键脚本 |
+
+<Callout type="warning" title="Lighthouse 与真实用户的差距">
+Lighthouse 使用合成监控（Lab Data），其 INP 值实际上由 TBT 近似推导，而非真实交互测量。一个 TBT 很好的页面，如果交互逻辑设计不当（如点击后触发大量同步计算），真实 INP 可能仍然很差。务必在生产环境部署 RUM（Real User Monitoring）采集真实 Core Web Vitals。
+</Callout>
+
+<Quiz
+  question="Lighthouse 10 中权重最高的指标是哪两个（各占 25%）？"
+  options={[
+    "FCP 和 SI",
+    "LCP 和 TBT",
+    "LCP 和 INP",
+    "CLS 和 TTFB"
+  ]}
+  correctIndex={2}
+  explanation="Lighthouse 10 的权重分配为：LCP 25%、INP 25%、CLS 25%、TBT 15%、SI 10%。LCP 和 INP 是权重最高的两个指标，反映了 Google 对加载性能和交互响应性的双重重视。"
+/>
+
+<Quiz
+  question="PageSpeed Insights 的 Field Data 来自哪个数据源？"
+  options={[
+    "Lighthouse 实验室测试",
+    "Chrome 用户体验报告（CrUX）",
+    "WebPageTest 全球节点",
+    "Google Analytics"
+  ]}
+  correctIndex={1}
+  explanation="PageSpeed Insights 的 Field Data 直接来自 Chrome 用户体验报告（Chrome User Experience Report，简称 CrUX），这是基于真实 Chrome 用户的选择性匿名数据集。Lab Data 才来自 Lighthouse 合成测试。"
+/>

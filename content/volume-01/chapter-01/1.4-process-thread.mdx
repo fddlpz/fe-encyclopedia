@@ -1,0 +1,268 @@
+---
+title: "1.4 进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型"
+description: "系统讲解操作系统中进程与线程的核心概念、进程间通信机制、线程同步原语，以及浏览器和 Node.js 中 Web Worker 与 Service Worker 的进程模型与最佳实践。"
+volume: "卷一：计算机科学与网络基础"
+chapter: "第 1 章 计算机系统基础"
+section: "1.4"
+tags: ["进程", "线程", "IPC", "Web Worker", "并发", "同步", "锁", "Service Worker", "浏览器架构"]
+difficulty: "基础"
+prerequisites: []
+related:
+  - { title: "1.3 内存管理：虚拟内存、分页与分段、栈与堆、V8 的堆结构", slug: "volume-01/chapter-01/1.3-memory-management" }
+  - { title: "1.5 磁盘 I/O 与文件系统", slug: "volume-01/chapter-01/1.5-disk-io" }
+crossRefs:
+  - { title: "浏览器渲染进程与事件循环", slug: "volume-02/chapter-04/4.2-event-loop" }
+  - { title: "React 并发模式", slug: "volume-03/chapter-09/9.3-react-concurrent" }
+  - { title: "Node.js Cluster 模块", slug: "volume-05/chapter-14/14.1-nodejs-cluster" }
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+### 进程：资源分配的基本单位
+
+**进程（Process）** 是操作系统进行资源分配和调度的基本单位。每个进程都拥有独立的虚拟地址空间、打开的文件描述符表、信号处理函数以及至少一个执行线程。从操作系统内核的角度看，进程是容纳程序运行所需全部资源的容器。
+
+进程的创建是一个相对昂贵的操作。以 Linux 为例，`fork()` 系统调用需要复制父进程的页表、文件描述符表等大量内核数据结构。虽然现代操作系统采用**写时复制（Copy-On-Write, COW）** 技术延迟实际内存页的复制，但进程上下文切换仍然涉及切换页表、刷新 TLB（Translation Lookaside Buffer）等高开销操作。
+
+进程的状态通常包括：新建（New）、就绪（Ready）、运行（Running）、阻塞（Waiting/Blocked）和终止（Terminated）。操作系统调度器（Scheduler）负责在多个就绪进程之间分配 CPU 时间片。
+
+### 线程：CPU 调度的基本单位
+
+**线程（Thread）** 是进程内的一条执行路径，是 CPU 调度的基本单位。一个进程可以包含多个线程，它们共享同一进程的虚拟地址空间、全局变量和堆内存，但每个线程拥有独立的程序计数器（PC）、寄存器组和栈。
+
+由于线程共享地址空间，线程的创建和上下文切换比进程轻量得多。线程切换不需要切换页表，TLB 也无需刷新，因此开销通常只有进程切换的几分之一。然而，共享内存也带来了复杂的数据竞争（Data Race）问题，必须通过同步机制加以约束。
+
+### 进程间通信（IPC）
+
+由于进程之间拥有独立的地址空间，它们无法直接访问彼此的内存，必须通过操作系统提供的**进程间通信（Inter-Process Communication, IPC）** 机制交换数据。常见的 IPC 方式包括：
+
+- **管道（Pipe）与命名管道（Named Pipe / FIFO）**：最早的 UNIX IPC 机制，提供单向字节流通信。匿名管道用于父子进程间，命名管道可用于无亲缘关系的进程。
+- **消息队列（Message Queue）**：进程通过发送和接收格式化的消息块进行通信，支持消息的优先级和异步读取。
+- **共享内存（Shared Memory）**：允许多个进程将同一块物理内存映射到各自的虚拟地址空间中。这是**最快的 IPC 方式**，因为它避免了内核态与用户态之间的数据拷贝。但共享内存本身不提供同步机制，必须与信号量（Semaphore）配合使用。
+- **信号量（Semaphore）与互斥锁（Mutex）**：用于进程间的同步与互斥。信号量可以控制对共享资源的并发访问数量，而互斥锁保证同一时间只有一个进程/线程进入临界区。
+- **套接字（Socket）**：不仅可用于网络通信，也可用于同一台机器上的进程间通信（Unix Domain Socket）。它提供了最灵活的通信模型（流式、数据报），但性能开销相对较大。
+- **信号（Signal）**：一种异步通知机制，用于通知进程发生了某个事件（如 `SIGKILL`、`SIGTERM`）。
+
+### 线程同步原语
+
+多线程编程的核心挑战在于协调对共享资源的访问。主要的同步原语包括：
+
+- **互斥锁（Mutex）**：保证临界区（Critical Section）的互斥访问。进入临界区前加锁，离开后解锁。
+- **读写锁（Read-Write Lock）**：区分读操作和写操作。多个读线程可以同时持有读锁，但写线程独占。适用于读多写少的场景。
+- **条件变量（Condition Variable）**：允许线程在某个条件不满足时阻塞等待，并在条件满足时被其他线程唤醒。常与互斥锁配合使用（如 POSIX 的 `pthread_cond_wait`）。
+- **信号量（Semaphore）**：更通用的同步机制，维护一个计数器。P 操作（等待）减少计数器，V 操作（信号）增加计数器。当计数器为 0 时，P 操作阻塞。
+- **自旋锁（Spinlock）**：线程在等待锁时不进入睡眠，而是忙等待（循环检查锁状态）。适用于锁持有时间极短且线程不希望在用户态/内核态之间切换的场景。
+
+### 死锁与活锁
+
+**死锁（Deadlock）** 是指两个或多个线程互相等待对方释放资源，导致所有线程永远阻塞。死锁产生的四个必要条件（Coffman 条件）是：互斥、占有且等待、不可抢占、循环等待。预防死锁的策略包括：资源一次性分配、按序申请资源、允许抢占等。
+
+**活锁（Livelock）** 是指线程没有被阻塞，但由于不断改变状态以响应对方，导致无法继续向前执行。例如，两人在狭窄的走廊相遇，同时向一侧避让，又同时向另一侧避让，永远让不开。
+
+## 用法
+
+### 浏览器中的多进程架构
+
+现代浏览器（如 Chrome）采用**多进程架构**以提升稳定性和安全性：
+
+- **浏览器进程（Browser Process）**：主进程，负责 UI、地址栏、书签栏，协调其他进程。
+- **渲染进程（Renderer Process）**：每个标签页（或同一站点的多个标签页，取决于站点隔离策略）运行在独立的渲染进程中。它包含主线程（执行 JavaScript、布局、绘制）、合成线程（Compositor Thread）和可能的多个 Web Worker 线程。
+- **GPU 进程（GPU Process）**：负责与 GPU 通信，处理所有标签页的 GPU 调用。
+- **网络进程（Network Process）**：负责网络请求。
+- **插件进程（Plugin Process）**：隔离运行第三方插件。
+
+这种架构的好处是：一个标签页的崩溃不会影响其他标签页；恶意网站利用漏洞时，受限于渲染进程的沙箱权限，难以攻击操作系统。
+
+### Web Worker：浏览器的多线程 JavaScript
+
+JavaScript 是单线程语言，但浏览器提供了 **Web Worker API**，允许在后台线程中运行脚本。
+
+```javascript
+// main.js（主线程）
+const worker = new Worker('worker.js');
+
+// 向 Worker 发送数据（使用结构化克隆算法序列化）
+worker.postMessage({ type: 'CALCULATE', data: new Array(1000000).fill(1) });
+
+worker.onmessage = (event) => {
+  console.log('Result from worker:', event.data);
+};
+
+worker.onerror = (err) => {
+  console.error('Worker error:', err.message);
+};
+
+// worker.js（Worker 线程）
+self.onmessage = (event) => {
+  const { type, data } = event.data;
+  if (type === 'CALCULATE') {
+    // 执行耗时计算，不会阻塞主线程
+    const sum = data.reduce((a, b) => a + b, 0);
+    self.postMessage(sum);
+  }
+};
+```
+
+**Worker 的限制**：
+- 无法访问 DOM（`document`、`window` 对象不可用）。
+- 无法访问主线程的变量和函数。
+- 与主线程的通信通过消息传递完成，大数据的序列化/反序列化有开销。
+- 可以使用 `SharedArrayBuffer` 进行零拷贝共享内存通信（受同源隔离策略限制）。
+
+### Service Worker：代理与离线缓存
+
+**Service Worker** 是一种特殊的 Web Worker，它作为浏览器与网络之间的代理，可以拦截和处理网络请求。
+
+```javascript
+// sw.js
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open('v1').then((cache) => {
+      return cache.addAll(['/index.html', '/styles.css', '/app.js']);
+    })
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      // 缓存命中则返回缓存，否则走网络请求
+      return response || fetch(event.request);
+    })
+  );
+});
+```
+
+Service Worker 运行在独立的进程中，即使页面关闭，它也可以在后台接收推送通知（Push Notification）或执行后台同步（Background Sync）。
+
+### Node.js 中的进程与线程
+
+Node.js 主线程是单线程事件循环，但可以通过 `child_process` 和 `worker_threads` 模块利用多核。
+
+```javascript
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+
+if (isMainThread) {
+  // 主线程：创建 4 个 Worker
+  const threads = new Set();
+  for (let i = 0; i < 4; i++) {
+    threads.add(new Worker(__filename, {
+      workerData: i,
+    }));
+  }
+
+  for (const worker of threads) {
+    worker.on('message', (msg) => console.log(msg));
+    worker.on('exit', () => {
+      threads.delete(worker);
+      if (threads.size === 0) console.log('All workers done');
+    });
+  }
+} else {
+  // Worker 线程
+  const result = workerData * workerData;
+  parentPort.postMessage(`Worker ${workerData}: ${result}`);
+}
+```
+
+## 实践
+
+### 场景一：前端长任务拆分与 Offload
+
+当主线程执行超过 50ms 的长任务时，会阻塞用户交互和渲染，导致卡顿。使用 Web Worker 将计算密集型任务 offload 是最佳实践。
+
+```typescript
+// 使用 Comlink 简化 Worker 的 RPC 调用
+import * as Comlink from 'comlink';
+
+class ImageProcessor {
+  async applyFilter(pixelData: Uint8ClampedArray): Promise<Uint8ClampedArray> {
+    // 耗时操作：遍历百万级像素
+    const output = new Uint8ClampedArray(pixelData.length);
+    for (let i = 0; i < pixelData.length; i += 4) {
+      // 灰度化
+      const gray = 0.299 * pixelData[i] + 0.587 * pixelData[i + 1] + 0.114 * pixelData[i + 2];
+      output[i] = output[i + 1] = output[i + 2] = gray;
+      output[i + 3] = pixelData[i + 3];
+    }
+    return output;
+  }
+}
+
+Comlink.expose(ImageProcessor);
+```
+
+### 场景二：Service Worker 的缓存策略选择
+
+不同的资源类型需要不同的缓存策略：
+
+| 资源类型 | 推荐策略 | 说明 |
+|---------|---------|------|
+| 应用 Shell（HTML/JS/CSS） | Cache First | 优先使用缓存，保证离线可用 |
+| API 数据 | Network First | 优先网络，失败时回退缓存 |
+| 用户头像/图片 | Stale While Revalidate | 立即返回缓存，后台更新新资源 |
+| 不可变资源（带 hash） | Cache Only | 文件名包含内容哈希，可永久缓存 |
+
+### 场景三：Node.js 集群模式利用多核
+
+Node.js 的 `cluster` 模块允许创建多个共享同一端口的 Worker 进程，充分利用多核 CPU。
+
+```javascript
+const cluster = require('cluster');
+const http = require('http');
+const os = require('os');
+
+if (cluster.isMaster) {
+  const numCPUs = os.cpus().length;
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
+  }
+} else {
+  http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end(`Handled by worker ${process.pid}\n`);
+  }).listen(8000);
+}
+```
+
+## 陷阱
+
+| 陷阱描述 | 典型表现 | 解决方案 |
+|---------|---------|---------|
+| **SharedArrayBuffer 的竞态条件** | 多个 Worker 同时读写共享内存，数据被意外覆盖 | 使用 `Atomics` API（`Atomics.load`, `Atomics.store`, `Atomics.add` 等）进行原子操作；或使用锁机制 |
+| **Worker 创建过多** | 为每个小任务创建 Worker，进程/线程创建开销反而拖慢整体性能 | 使用 Worker Pool（线程池）复用 Worker 实例，如 `piscina` 库 |
+| **主线程与 Worker 间传递大数据** | `postMessage` 大数据时触发结构化克隆，导致主线程卡顿 | 使用 `Transferable Objects`（如 `ArrayBuffer`）转移所有权，实现零拷贝 |
+| **Service Worker 更新陷阱** | 更新了 Service Worker 代码，但浏览器仍使用旧版本 | 理解 Service Worker 的生命周期：新版本进入 `waiting` 状态，需关闭所有旧页面或调用 `skipWaiting()` |
+| **死锁** | 线程 A 持有锁 1 等待锁 2，线程 B 持有锁 2 等待锁 1 | 始终按照全局一致的顺序获取锁；或使用超时锁（TryLock） |
+| **竞态条件下的 check-then-act** | `if (obj) { obj.doSomething(); }` 中 obj 在判断后被其他线程置空 | 使用原子操作或锁保护整个 check-then-act 序列 |
+| **Node.js 中误用 `worker_threads` 做 I/O** | Worker Thread 中执行大量 I/O，而 Node.js 的异步 I/O 本身已非阻塞 | Worker Thread 应用于 CPU 密集型任务；I/O 密集型任务应使用异步 API 或 `child_process` |
+| **忽略浏览器站点隔离（Site Isolation）** | 认为同一浏览器的所有标签页共享同一进程 | Chrome 的站点隔离策略会让不同域名的页面运行在不同进程，甚至同一域名的不同标签页也可能分离 |
+
+<Callout type="info" title="Transferable Objects 的注意事项">
+当通过 `postMessage` 发送一个 `Transferable` 对象（如 `ArrayBuffer`）时，该对象的所有权会从发送方转移到接收方。转移后，发送方线程中将无法再访问该对象（其长度变为 0）。这是实现高性能零拷贝通信的关键，但开发者必须确保转移后不再使用原引用。
+</Callout>
+
+<Quiz
+  question="为什么现代浏览器（如 Chrome）要为每个标签页使用独立的渲染进程？"
+  options={[
+    "为了节省内存",
+    "为了提升稳定性和安全性：一个标签页崩溃不会影响其他标签页，且进程沙箱限制了恶意代码的权限",
+    "因为 JavaScript 引擎不支持多线程",
+    "为了减少网络请求"
+  ]}
+  correctIndex={1}
+  explanation="多进程架构是现代浏览器的核心安全与稳定性设计。每个渲染进程运行在独立的虚拟地址空间中，即使某个页面因 JavaScript 死循环或内存耗尽而崩溃，也只会终止该进程，其他标签页照常运行。此外，渲染进程运行在沙箱中，对操作系统资源的访问受到严格限制。"
+/>
+
+<Quiz
+  question="在使用 `SharedArrayBuffer` 的多线程环境中，两个 Worker 同时执行 `sab[0]++`，可能会出现什么问题？"
+  options={[
+    "数组越界",
+    "类型错误",
+    "竞态条件（Race Condition）：读取-修改-写入操作非原子，导致更新丢失",
+    "内存泄漏"
+  ]}
+  correctIndex={2}
+  explanation="`sab[0]++` 在底层实际上是三条指令：读取值、加 1、写回。如果两个 Worker 交错执行，可能都读到相同的旧值，各自加 1 后写回，最终结果只增加了 1 而非 2。必须使用 `Atomics.add(sab, 0, 1)` 来保证原子性。"
+/>

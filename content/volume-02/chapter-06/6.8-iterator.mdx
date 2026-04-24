@@ -1,0 +1,209 @@
+---
+title: "6.8 迭代器协议：可迭代协议、迭代器协议、Generator、yield*"
+description: "可迭代协议、迭代器协议、Generator、yield*"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.8"
+tags: ["迭代器", "Generator", "Symbol.iterator", "协议"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.7-async", "6.9-proxy-reflect"]
+crossRefs: []
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+迭代器（Iterator）是 JavaScript 中一套统一的遍历机制，它解耦了遍历行为与数据结构。通过迭代器协议，开发者可以为任何对象定义自定义的遍历逻辑，而无需暴露内部表示。
+
+### 可迭代协议（Iterable Protocol）
+
+一个对象要实现可迭代协议，必须具有 `Symbol.iterator` 属性，该属性是一个无参函数，返回一个符合迭代器协议的对象。
+
+内置可迭代对象包括：`Array`、`String`、`Map`、`Set`、`TypedArray`、`arguments`、NodeList、`Generator` 对象等。
+
+### 迭代器协议（Iterator Protocol）
+
+迭代器对象必须实现 `next()` 方法，该方法返回一个包含以下属性的对象：
+
+- `value`：当前迭代项的值。
+- `done`：布尔值，表示迭代是否结束。
+
+```js
+const iterator = {
+  current: 0,
+  last: 5,
+  next() {
+    if (this.current <= this.last) {
+      return { value: this.current++, done: false };
+    }
+    return { value: undefined, done: true };
+  }
+};
+```
+
+### 生成器（Generator）
+
+生成器是 ES6 引入的特殊函数，通过 `function*` 声明。调用生成器函数不立即执行函数体，而是返回一个 `Generator` 对象，该对象同时是可迭代对象也是迭代器。
+
+生成器的核心语义：
+
+- `yield`：暂停执行并返回一个值给调用者，保留当前执行状态（包括变量绑定、执行位置）。
+- `next(value)`：恢复执行，并将 `value` 作为上一个 `yield` 表达式的返回值。
+- `return(value)`：提前终止生成器，返回 `{ value, done: true }`。
+- `throw(error)`：向生成器内抛出一个异常，可在生成器内部用 `try/catch` 捕获。
+
+生成器的执行状态机由引擎在底层维护，开发者无需手动管理状态变量。
+
+### yield* 与委托迭代
+
+`yield*` 用于将迭代工作委托给另一个可迭代对象或生成器：
+
+```js
+function* gen1() {
+  yield 1;
+  yield* gen2();
+  yield 4;
+}
+
+function* gen2() {
+  yield 2;
+  yield 3;
+}
+
+[...gen1()]; // [1, 2, 3, 4]
+```
+
+`yield*` 不仅委托值，还委托 `return()` 和 `throw()` 调用。当被委托的生成器执行 `return` 时，其返回值会成为外层 `yield*` 表达式的值。
+
+### 迭代器与隐藏类优化
+
+V8 引擎对内置可迭代对象（如数组）的迭代有专门优化路径。自定义迭代器若遵循规范精确返回 `{ value, done }` 对象，也能享受较好的性能。但应避免在 `next()` 中执行重型计算或频繁创建临时对象。
+
+## 用法
+
+```js
+// 为对象实现自定义迭代器
+class Range {
+  constructor(start, end) {
+    this.start = start;
+    this.end = end;
+  }
+
+  *[Symbol.iterator]() {
+    for (let i = this.start; i <= this.end; i++) {
+      yield i;
+    }
+  }
+}
+
+const range = new Range(1, 3);
+for (const n of range) {
+  console.log(n); // 1, 2, 3
+}
+
+// 生成器实现无限序列（惰性求值）
+function* fibonacci() {
+  let [a, b] = [0, 1];
+  while (true) {
+    yield a;
+    [a, b] = [b, a + b];
+  }
+}
+
+const fib = fibonacci();
+fib.next().value; // 0
+fib.next().value; // 1
+fib.next().value; // 1
+
+// 双向通信的生成器
+function* accumulator() {
+  let total = 0;
+  while (true) {
+    const value = yield total;
+    if (value === undefined) break;
+    total += value;
+  }
+}
+
+const acc = accumulator();
+acc.next();       // { value: 0, done: false }
+acc.next(10);     // { value: 10, done: false }
+acc.next(5);      // { value: 15, done: false }
+```
+
+## 实践
+
+### 惰性加载与大数据处理
+
+生成器的惰性求值特性使其成为处理大型数据集的理想工具：
+
+```js
+function* readLines(fileStream) {
+  let buffer = '';
+  for await (const chunk of fileStream) {
+    buffer += chunk;
+    let idx;
+    while ((idx = buffer.indexOf('\n')) !== -1) {
+      yield buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 1);
+    }
+  }
+  if (buffer) yield buffer;
+}
+```
+
+### 状态机简化
+
+生成器可以优雅地实现复杂状态机，避免回调嵌套和状态变量：
+
+```js
+function* trafficLight() {
+  while (true) {
+    yield 'green';
+    yield 'yellow';
+    yield 'red';
+  }
+}
+
+const light = trafficLight();
+light.next().value; // 'green'
+light.next().value; // 'yellow'
+```
+
+### 与解构和展开运算符的配合
+
+可迭代对象可以直接用于解构赋值和展开运算符，但注意展开运算符会 eagerly 消费整个迭代器：
+
+```js
+const [first, second] = fibonacci(); // 解构取前两项
+const firstFive = [...new Range(1, 5)]; // [1,2,3,4,5]
+```
+
+对于无限序列，切勿使用展开运算符或 `Array.from`，否则会导致无限循环。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 生成器只能迭代一次 | 第二次 `for...of` 无输出 | 每次需要新迭代时重新调用生成器函数 |
+| 展开无限迭代器 | `Array.from(fibonacci())` 导致死循环 | 使用 `take` 函数限制数量后再展开 |
+| 迭代器未返回 done:true | `for...of` 可能无限循环 | 确保迭代器在结束时返回 `{ done: true }` |
+| yield 在箭头函数中不可用 | 语法错误 | 生成器必须使用 `function*` 声明 |
+| 手动迭代忘记检查 done | 最后一次 value 可能为 undefined | 始终检查 `result.done` |
+
+## 测验
+
+<Quiz
+  question="生成器函数调用后返回什么？"
+  options={["生成器函数的执行结果", "一个 Generator 对象（可迭代且是迭代器）", "undefined", "一个 Promise"]}
+  correctIndex={1}
+  explanation="调用 function* 不会执行函数体，而是返回一个 Generator 对象。该对象实现了迭代器协议，可以通过 next() 控制执行流程。"
+/>
+
+<Quiz
+  question="`yield*` 的主要作用是什么？"
+  options={["终止生成器", "将迭代委托给另一个可迭代对象", "返回一个 Promise", "抛出异常"]}
+  correctIndex={1}
+  explanation="yield* 用于将迭代委托给另一个可迭代对象或生成器，使得外层生成器可以透明地消费内层迭代器的所有值。"
+/>

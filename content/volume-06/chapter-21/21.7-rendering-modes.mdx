@@ -1,0 +1,350 @@
+---
+title: "21.7 渲染模式：CSR / SSR / SSG / ISR / Streaming SSR"
+description: "深入对比客户端渲染、服务端渲染、静态生成、增量静态再生和流式渲染的技术原理、适用场景与性能权衡"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 21 章 加载性能优化"
+section: "21.7"
+tags: ["CSR", "SSR", "SSG", "ISR", "Streaming SSR", "渲染模式", "Next.js"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals", "21.2-code-optimization"]
+related: ["20.2-core-web-vitals", "21.2-code-optimization", "22.1-rendering-optimization"]
+crossRefs: ["20.2-core-web-vitals.mdx", "21.2-code-optimization.mdx", "22.1-rendering-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+渲染模式决定了 HTML 内容在何时、何地、以何种方式生成。从纯客户端渲染（CSR）到流式服务端渲染（Streaming SSR），每种模式都在首屏性能、交互性、服务器成本和开发复杂度之间做出不同的权衡。理解这些模式的底层机制，是架构选型的基础。
+
+### CSR（Client-Side Rendering，客户端渲染）
+
+CSR 模式下，服务器返回一个几乎空的 HTML 外壳（通常只有一个 `<div id="root"></div>`），所有内容由浏览器下载并执行 JavaScript 后动态生成。
+
+**浏览器执行流程：**
+
+1. 下载 HTML（~2KB）
+2. 解析 HTML，发现 `<script src="app.js">`，发起 JS 请求
+3. 下载 JS（通常 100~500KB）
+4. 解析并执行 JS，构建虚拟 DOM
+5. 执行数据获取（`fetch` / `axios`）
+6. 接收到数据后，渲染完整内容
+
+**CSR 的性能特征：**
+
+- **TTFB**：极低（空 HTML 立即返回）
+- **FCP**：取决于 JS 下载和执行时间，通常 1~3s
+- **LCP**：通常与 FCP 接近或稍晚
+- **TTI**：JS 执行完成后，通常 FCP + 500ms~2s
+- **INP**：可能较差，因为主线程被 hydration 占用
+
+**CSR 的根本问题：** 内容渲染被 JavaScript 执行阻塞。在低端设备或弱网环境下，用户可能面对数秒的白屏或骨架屏。
+
+### SSR（Server-Side Rendering，服务端渲染）
+
+SSR 模式下，服务器在收到请求时执行应用代码，生成完整的 HTML 字符串返回给浏览器。浏览器接收到 HTML 后立即开始渲染，无需等待 JavaScript 下载。
+
+**SSR 的执行流程：**
+
+1. 服务器收到请求
+2. 执行 React/Vue 组件树，调用数据获取逻辑（如 `getServerSideProps`）
+3. 生成完整 HTML 字符串
+4. 返回 HTML + 内联的初始数据（`window.__INITIAL_STATE__`）
+5. 浏览器解析 HTML，立即渲染内容（FCP 提前）
+6. 下载并执行 JS，进行 hydration（将事件监听器绑定到已有 DOM）
+
+**Hydration 的底层机制：**
+
+Hydration 不是重新创建 DOM，而是"接管"服务器生成的 DOM。React/Vue 在客户端重新执行组件树，将虚拟 DOM 与真实 DOM 对比，确认结构一致后附加事件监听器。若服务器输出与客户端输出不一致（如使用了 `Date.now()` 或随机数），会产生 hydration mismatch 警告，甚至需要重新渲染 DOM。
+
+**SSR 的性能特征：**
+
+- **TTFB**：较高（服务器需要执行应用逻辑和数据查询）
+- **FCP**：显著提前（HTML 到达即可渲染）
+- **LCP**：通常接近 FCP
+- **TTI**：HTML 渲染后仍需等待 JS hydration 完成才能交互
+- **INP**：hydration 期间主线程繁忙，交互响应可能延迟
+
+### SSG（Static Site Generation，静态站点生成）
+
+SSG 在**构建时**预渲染所有页面为静态 HTML 文件。用户请求时，服务器直接返回预生成的 HTML，无需执行任何应用逻辑。
+
+**SSG 的执行流程：**
+
+1. 构建时：遍历所有路由，执行组件树，生成 HTML 文件
+2. 部署时：将 HTML 文件上传到 CDN/静态托管
+3. 请求时：CDN 直接返回缓存的 HTML
+4. 浏览器：解析 HTML 立即渲染，随后下载 JS 进行 hydration
+
+**SSG 的性能特征：**
+
+- **TTFB**：极低（CDN 边缘节点直接返回缓存 HTML）
+- **FCP/LCP**：极快（通常 < 1s）
+- **TTI**：仍需等待 hydration
+- **服务器成本**：几乎为零（纯静态托管）
+
+**SSG 的局限：** 无法为每个用户生成个性化内容，不适合强动态页面（如用户仪表盘、实时数据）。
+
+### ISR（Incremental Static Regeneration，增量静态再生）
+
+ISR 是 Next.js 提出的混合模式：页面首次请求时由 SSR 生成并缓存，后续请求返回缓存的静态 HTML，同时后台异步重新生成更新版本。
+
+**ISR 的执行流程：**
+
+1. 首次请求：SSR 生成 HTML，返回给客户端，存入缓存
+2. 后续请求：直接返回缓存 HTML（SSG 体验）
+3. 后台：在指定时间（`revalidate: 60`）后，下次请求触发重新生成
+4. 重新生成完成：更新缓存，后续请求获得新版本
+
+**ISR 的"过时-然后失效"（Stale-While-Revalidate）语义：**
+
+ISR 本质上将 HTTP 的 `stale-while-revalidate` 策略应用到了页面级别。用户在重新生成期间看到的是略微过时的内容，但获得了极快的响应速度。
+
+### Streaming SSR（流式服务端渲染）
+
+Streaming SSR 是 React 18 引入的革命性特性。传统 SSR 必须等待整个页面的 HTML 生成完毕后才能发送第一个字节；Streaming SSR 允许服务器**分块发送 HTML**，浏览器在接收过程中逐步渲染。
+
+**Streaming SSR 的执行流程：**
+
+1. 服务器立即发送 HTML 头部和无需数据的部分（如导航栏、布局框架）
+2. 浏览器收到头部后立即开始渲染，无需等待完整响应
+3. 服务器并行获取数据，数据就绪后流式发送剩余 HTML
+4. 对于特别慢的数据源，使用 `Suspense` 边界包裹，先发送 fallback UI（如骨架屏/加载圈）
+5. 数据就绪后，通过内联 `<script>` 推送剩余 HTML（HTML Streaming + Selective Hydration）
+
+**React 18 的 Selective Hydration：**
+
+传统 hydration 是"全有或全无"的——必须等待所有组件的 JS 下载完成，才能开始 hydration。React 18 的 Selective Hydration 允许：
+- 优先 hydration 用户交互的组件（如点击了某个按钮）
+- 将非关键组件的 hydration 推迟到主线程空闲时
+- 配合 `Suspense` 实现组件级的流式渲染
+
+## 用法
+
+### Next.js 渲染模式配置
+
+```javascript
+// Next.js 14 App Router 渲染模式示例
+
+// 1. SSG：默认静态生成
+// app/page.js
+export default function HomePage() {
+  return <h1>静态首页</h1>;
+}
+// 构建时生成静态 HTML
+
+// 2. SSR：强制动态渲染
+// app/dashboard/page.js
+export const dynamic = 'force-dynamic';
+
+export default async function DashboardPage() {
+  const data = await fetch('https://api.example.com/data', { cache: 'no-store' });
+  const json = await data.json();
+  return <Dashboard data={json} />;
+}
+
+// 3. ISR：增量静态再生
+// app/blog/[slug]/page.js
+export const revalidate = 60; // 60 秒后重新生成
+
+export async function generateStaticParams() {
+  const posts = await fetch('https://api.example.com/posts').then(r => r.json());
+  return posts.map((post) => ({ slug: post.slug }));
+}
+
+export default async function BlogPostPage({ params }) {
+  const post = await fetch(`https://api.example.com/posts/${params.slug}`, {
+    next: { revalidate: 60 },
+  }).then(r => r.json());
+
+  return <article><h1>{post.title}</h1><div>{post.content}</div></article>;
+}
+
+// 4. Streaming SSR + Suspense
+// app/page.js
+import { Suspense } from 'react';
+import { ProductList, ProductListSkeleton } from './components/ProductList';
+import { Reviews, ReviewsSkeleton } from './components/Reviews';
+
+export default function ProductPage() {
+  return (
+    <div>
+      <h1>产品详情</h1>
+      {/* 产品列表：立即流式渲染 */}
+      <Suspense fallback={<ProductListSkeleton />}>
+        <ProductList />
+      </Suspense>
+
+      {/* 评论：可能较慢，单独 Suspense 边界 */}
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Reviews />
+      </Suspense>
+    </div>
+  );
+}
+
+// components/ProductList.js
+async function ProductList() {
+  const products = await fetch('https://api.example.com/products').then(r => r.json());
+  return (
+    <ul>
+      {products.map(p => <li key={p.id}>{p.name}</li>)}
+    </ul>
+  );
+}
+```
+
+### Nuxt 3 渲染模式配置
+
+```vue
+<!-- Nuxt 3 页面级渲染模式 -->
+<script setup>
+// SSG：静态生成
+definePageMeta({
+  prerender: true,
+});
+
+// SSR：服务端渲染（默认）
+// 无需特殊配置
+
+// CSR：纯客户端渲染
+definePageMeta({
+  ssr: false,
+});
+</script>
+
+<template>
+  <div>页面内容</div>
+</template>
+```
+
+```javascript
+// nuxt.config.ts - 全局渲染策略
+export default defineNuxtConfig({
+  routeRules: {
+    // 首页静态生成
+    '/': { prerender: true },
+    // 博客文章 ISR
+    '/blog/**': { isr: 60 },
+    // 仪表盘客户端渲染
+    '/dashboard/**': { ssr: false },
+    // API 代理
+    '/api/**': { proxy: 'https://backend.example.com/api/**' },
+  },
+});
+```
+
+### Astro 的群岛架构（Islands Architecture）
+
+```astro
+---
+// Astro 组件：默认零 JavaScript
+const response = await fetch('https://api.example.com/posts');
+const posts = await response.json();
+---
+
+<html>
+  <head><title>博客</title></head>
+  <body>
+    <h1>最新文章</h1>
+    <ul>
+      {posts.map(post => (
+        <li>{post.title}</li>
+      ))}
+    </ul>
+
+    {/* 交互式组件：仅在需要时加载 JS */}
+    <Search client:load />
+
+    {/*  below-the-fold 组件：进入视口时加载 */}
+    <Comments postId={posts[0].id} client:visible />
+
+    {/* 轻交互：使用 client:idle 在空闲时加载 */}
+    <LikeButton postId={posts[0].id} client:idle />
+  </body>
+</html>
+```
+
+Astro 的 Islands Architecture 默认输出纯 HTML，仅在显式标记 `client:*` 的组件上加载 JavaScript。这实现了 SSR/SSG 的首屏性能，同时保留了交互能力。
+
+## 实践
+
+### 渲染模式性能对比
+
+| 指标 | CSR | SSR | SSG | ISR | Streaming SSR |
+|------|-----|-----|-----|-----|---------------|
+| TTFB | 极低 | 高 | 极低 | 低 | 极低 |
+| FCP | 慢 | 快 | 极快 | 快 | 极快 |
+| LCP | 慢 | 快 | 极快 | 快 | 极快 |
+| TTI | 中 | 中 | 中 | 中 | 快 |
+| 服务器成本 | 低 | 高 | 极低 | 低 | 中 |
+| 动态内容 | 是 | 是 | 否 | 是（延迟） | 是 |
+| 构建时间 | 无 | 无 | 长 | 中 | 无 |
+
+### 案例：电商站渲染模式选型
+
+某电商站包含以下页面类型，采用混合渲染策略：
+
+| 页面 | 模式 | 原因 |
+|------|------|------|
+| 首页 | SSG + Client Fetch | 内容相对固定，但推荐商品需实时 |
+| 商品列表 | ISR (revalidate=300) | 库存和价格需定期更新，但可接受 5 分钟延迟 |
+| 商品详情 | ISR (revalidate=60) + Streaming | 价格敏感，但评论等非关键内容可流式加载 |
+| 购物车 | SSR | 强用户相关，必须实时 |
+| 结账 | CSR | 强交互，大量表单验证，SSR 收益低 |
+| 用户中心 | SSR | 完全个性化，无法缓存 |
+| 帮助文档 | SSG | 纯内容，极少更新 |
+
+### 渲染模式选型决策树
+
+```
+页面是否强个性化（每个用户内容不同）？
+  是 -> 是否强交互（大量表单/动画）？
+    是 -> CSR 或 SSR + hydration
+    否 -> SSR
+  否 -> 内容是否频繁更新？
+    是 -> ISR（设置合适的 revalidate）
+    否 -> SSG（最佳性能）
+
+是否需要优化 TTI？
+  是 -> Streaming SSR + Selective Hydration
+```
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| Hydration Mismatch | 服务端输出与客户端输出不一致（如使用了 `Date.now()`、`Math.random()`、window 对象） | React 警告，可能重新渲染整个页面，性能倒退 |
+| SSR 内存泄漏 | 每次请求创建的事件监听器、定时器未清理 | 服务器内存持续增长，最终崩溃 |
+| 过度使用 SSR | 对几乎静态的内容使用 SSR，浪费服务器资源 | 服务器成本增加，响应延迟 |
+| ISR 的首次请求延迟 | ISR 页面首次请求需要 SSR 生成，响应较慢 | 冷启动体验差，需配合预热策略 |
+| Streaming SSR 的 CSS-in-JS 问题 | 某些 CSS-in-JS 库（如 Styled Components）不支持流式样式提取 | 样式闪烁或无样式内容闪烁（FOUC） |
+| 忽略 hydration 后的交互延迟 | 认为 SSR 后页面立即可交互，忽视 hydration 时间 | 用户点击无响应，INP 差 |
+| 全站统一渲染模式 | 所有页面使用同一种渲染模式 | 部分内容页过度渲染，部分交互页白屏过久 |
+
+<Callout type="warning" title="Hydration Mismatch 的根因与解决">
+Hydration Mismatch 最常见的原因是服务端和客户端的初始状态不一致。典型触发器包括：1) 直接使用 `Date.now()` 或 `new Date()` 生成内容；2) 使用 `Math.random()` 生成 ID 或 key；3) 在服务端访问 `window`/`document`；4) 从 localStorage 读取初始状态。解决方案：1) 使用 `useEffect` 包裹客户端-only 逻辑；2) 使用 `suppressHydrationWarning` 处理已知无害的差异（如时间戳）；3) 确保数据获取逻辑在服务端和客户端一致。
+</Callout>
+
+<Quiz
+  question="Streaming SSR 相比传统 SSR 的核心优势是什么？"
+  options={[
+    "减少服务器 CPU 使用",
+    "不需要 hydration",
+    "浏览器无需等待完整 HTML 生成即可开始渲染，显著提前 FCP",
+    "自动禁用 JavaScript"
+  ]}
+  correctIndex={2}
+  explanation="传统 SSR 必须等待整个页面的 HTML 生成完毕后才能发送响应，TTFB 到 FCP 的间隔较大。Streaming SSR 允许服务器分块发送 HTML，浏览器在接收过程中逐步渲染。配合 Suspense，慢数据组件可先显示 fallback，不阻塞其他内容的渲染。"
+/>
+
+<Quiz
+  question="Astro 的 Islands Architecture 如何实现'零 JS 默认'？"
+  options={[
+    "禁用所有 JavaScript",
+    "默认输出纯 HTML，仅在显式标记 client:* 指令的组件上加载和 hydrate JavaScript",
+    "使用 WASM 替代 JavaScript",
+    "将所有 JS 移至 Service Worker"
+  ]}
+  correctIndex={1}
+  explanation="Astro 在构建时执行组件，输出纯静态 HTML。默认情况下，不向客户端发送任何 JavaScript。开发者需要在需要交互的组件上显式添加 client:load、client:visible、client:idle 等指令，Astro 才会打包并 hydrate 这些'岛屿'组件。这实现了 SSR 的首屏性能与 CSR 的交互能力的最佳平衡。"
+/>

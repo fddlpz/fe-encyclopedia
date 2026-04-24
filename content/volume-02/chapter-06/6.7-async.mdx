@@ -1,0 +1,261 @@
+---
+title: "6.7 异步编程：回调、Promise/A+、async/await、异步迭代器与生成器"
+description: "回调、Promise/A+、async/await、异步迭代器与生成器"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.7"
+tags: ["Promise", "async/await", "异步", "事件循环"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.3-execution-context", "6.8-iterator"]
+crossRefs: ["11.7-concurrent"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 是单线程语言，所有代码都在主线程上执行。异步编程是处理 I/O、网络请求、定时器等非阻塞操作的核心机制。从回调地狱到 Promise，再到 async/await，JavaScript 的异步编程模型经历了三次重大演进。
+
+### 回调与回调地狱
+
+最早的异步模式基于回调函数（Callback）：
+
+```js
+readFile('a.txt', function(err, dataA) {
+  if (err) return handle(err);
+  readFile('b.txt', function(err, dataB) {
+    if (err) return handle(err);
+    // ...
+  });
+});
+```
+
+回调模式的根本问题在于：
+
+- **回调地狱（Callback Hell）**：嵌套层级过深，代码横向膨胀。
+- **错误处理分散**：每个回调都需要单独处理错误。
+- **控制流困难**：并行、竞速、超时等逻辑难以组合。
+- **信任问题（Inversion of Control）**：将后续逻辑的控制权交给第三方库，可能遭遇调用次数异常、参数错误等问题。
+
+### Promise 与 A+ 规范
+
+Promise 是对异步操作最终完成（或失败）的代理对象。它代表一个尚未完成但预期将来会完成的操作，并可以注册回调以接收操作的成功值或失败原因。
+
+Promise 的核心机制由 **Promise/A+ 规范** 定义，所有现代 JavaScript 引擎的实现都遵循此规范：
+
+- **三种状态**：`pending`（待定）、`fulfilled`（已成功）、`rejected`（已拒绝）。状态一旦改变不可再次变更。
+- **Thenable 接口**：具有 `then(onFulfilled, onRejected)` 方法的对象。Promise 的链式调用依赖此接口实现互操作性。
+- **微任务（Microtask）队列**：`then` 注册的回调不会立即执行，而是进入微任务队列，在当前同步代码和已清空的调用栈之后、下一次事件循环之前执行。
+
+Promise 链的关键特性：
+
+1. `then` 返回新的 Promise，实现链式调用。
+2. 若 `then` 中的回调返回 Promise，则后续 `then` 等待其解决。
+3. 若 `then` 中的回调抛出异常，则返回的 Promise 被拒绝。
+4. 错误会沿链向下传播，直到被 `catch` 捕获。
+
+```js
+fetch('/api/user')
+  .then(r => r.json())
+  .then(data => fetch(`/api/posts/${data.id}`))
+  .then(r => r.json())
+  .catch(err => console.error(err));
+```
+
+### async/await 的语法糖本质
+
+ES2017 引入的 `async/await` 并非新的异步机制，而是基于 Promise 和 Generator 的语法糖。引擎将 `async` 函数体转译为状态机，将 `await` 表达式转换为 Promise 的 `.then()` 调用。
+
+```js
+async function getUserPosts() {
+  const user = await fetch('/api/user').then(r => r.json());
+  const posts = await fetch(`/api/posts/${user.id}`).then(r => r.json());
+  return posts;
+}
+```
+
+`async` 函数始终返回一个 Promise。函数体内的返回值会被 `Promise.resolve()` 包装；抛出的异常会导致返回的 Promise 被拒绝。
+
+`await` 的行为：
+
+- 若操作数是 Promise，暂停 `async` 函数执行，等待 Promise 解决后恢复。
+- 若操作数非 Promise，将其包装为已解决的 Promise 并立即恢复。
+- `await` 始终等待微任务，即使操作数已是解决状态的 Promise（`await 1` 也会延迟到微任务阶段）。
+
+### 事件循环与任务优先级
+
+理解异步执行顺序必须深入事件循环（Event Loop）模型：
+
+1. **调用栈（Call Stack）**：执行同步代码。
+2. **微任务队列（Microtask Queue）**：Promise.then/catch/finally、MutationObserver、queueMicrotask 注册的回调。
+3. **宏任务队列（Macrotask Queue）**：setTimeout、setInterval、setImmediate（Node.js）、I/O 回调、UI 渲染。
+
+执行顺序规则：
+
+- 当前宏任务执行完毕。
+- 清空所有微任务（包括微任务执行过程中新加入的微任务）。
+- 执行必要的渲染步骤。
+- 取出下一个宏任务执行。
+
+```js
+console.log('1');
+setTimeout(() => console.log('2'), 0);
+Promise.resolve().then(() => console.log('3'));
+console.log('4');
+// 输出：1, 4, 3, 2
+```
+
+### 异步迭代器与生成器（ES2018）
+
+异步迭代器协议扩展了同步迭代器，用于消费异步数据源：
+
+```js
+async function* fetchPages(urls) {
+  for (const url of urls) {
+    yield await fetch(url).then(r => r.json());
+  }
+}
+
+for await (const page of fetchPages(urls)) {
+  console.log(page);
+}
+```
+
+`for-await-of` 循环会自动处理异步迭代器的 `next()` 返回的 Promise，按顺序消费数据。
+
+<Callout type="info" title="async/await 不是并行">
+`await` 在 `async` 函数中是顺序执行的。以下代码的总耗时是两个请求耗时之和：
+
+```js
+const a = await fetch('/a'); // 耗时 100ms
+const b = await fetch('/b'); // 耗时 100ms
+// 总耗时约 200ms
+```
+
+如需并行，应使用 `Promise.all`：
+
+```js
+const [a, b] = await Promise.all([fetch('/a'), fetch('/b')]);
+// 总耗时约 100ms
+```
+</Callout>
+
+## 用法
+
+```js
+// Promise 组合模式
+// 1. 顺序执行
+const results = [];
+for (const url of urls) {
+  const res = await fetch(url);
+  results.push(await res.json());
+}
+
+// 2. 并行执行（有并发上限）
+async function parallelWithLimit(tasks, limit) {
+  const executing = [];
+  for (const task of tasks) {
+    const p = Promise.resolve(task()).then(result => {
+      executing.splice(executing.indexOf(p), 1);
+      return result;
+    });
+    executing.push(p);
+    if (executing.length >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  return Promise.all(executing);
+}
+
+// 3. 竞速与超时
+const data = await Promise.race([
+  fetch('/api'),
+  new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout')), 5000)
+  )
+]);
+```
+
+## 实践
+
+### 错误处理策略
+
+`async/await` 使得异步错误处理可以用同步风格的 `try/catch`：
+
+```js
+async function safeFetch(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    // 捕获网络错误和 HTTP 错误
+    console.error('Fetch failed:', err);
+    return null; // 或重试、降级
+  }
+}
+```
+
+注意：`try/catch` 在 `async` 函数中无法捕获同步抛出的异常（如参数校验错误），除非异常发生在 `await` 之后。对于混合场景，应确保所有可能抛出的代码都在 `try` 块内。
+
+### 取消异步操作
+
+Promise 标准未提供取消机制。常见方案：
+
+1. **AbortController**（Fetch API 标准）：
+
+```js
+const controller = new AbortController();
+fetch('/api', { signal: controller.signal });
+setTimeout(() => controller.abort(), 5000);
+```
+
+2. **封装可取消的 Promise**：
+
+```js
+function makeCancelable(promise) {
+  let isCanceled = false;
+  const wrapped = new Promise((resolve, reject) => {
+    promise.then(
+      val => isCanceled ? reject({ isCanceled: true }) : resolve(val),
+      err => isCanceled ? reject({ isCanceled: true }) : reject(err)
+    );
+  });
+  return {
+    promise: wrapped,
+    cancel() { isCanceled = true; }
+  };
+}
+```
+
+### 性能考量
+
+- 避免在热点循环中创建大量 Promise，每个 Promise 都有内存分配和微任务调度开销。
+- `Promise.all` 在任一输入拒绝时立即拒绝，若需所有结果（无论成功失败）使用 `Promise.allSettled`。
+- `await` 在循环中会导致串行执行，注意区分业务需求是串行还是并行。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 忘记 await | `async` 函数返回 Promise，调用者未 await 导致逻辑错乱 | 启用 ESLint `require-await` 和 TypeScript `no-floating-promises` |
+| await 在循环中串行化 | `for...of` 中 await 导致请求逐个发送，总耗时剧增 | 无依赖的异步操作使用 `Promise.all` |
+| catch 只捕获最近一层 | Promise 链中某层错误被吞掉 | 确保每个分支都有错误处理；在链尾统一 catch |
+| async 函数中同步异常 | 函数开头抛出异常，调用者未 catch 导致未捕获错误 | 在 async 函数内部用 try/catch 包裹所有可能抛出的代码 |
+| 微任务饿死宏任务 | 微任务递归生成微任务，导致 setTimeout 迟迟不执行 | 避免在微任务中无限递归；长任务拆分为多个宏任务 |
+
+## 测验
+
+<Quiz
+  question="以下代码的输出顺序是什么？`console.log(1); setTimeout(()=>console.log(2),0); Promise.resolve().then(()=>console.log(3)); console.log(4);`"
+  options={["1,2,3,4", "1,4,2,3", "1,4,3,2", "1,3,4,2"]}
+  correctIndex={2}
+  explanation="同步代码先执行（1, 4）。然后清空微任务队列（Promise.then 输出 3）。最后执行宏任务（setTimeout 输出 2）。"
+/>
+
+<Quiz
+  question="`await` 一个非 Promise 值（如 `await 1`）会发生什么？"
+  options={["立即返回 1", "抛出 TypeError", "将其包装为 Promise 并在微任务中恢复", "阻塞主线程"]}
+  correctIndex={2}
+  explanation="await 会将非 Promise 值包装为 Promise.resolve(1)。即使值已解决，await 仍会暂停当前 async 函数，将其余部分放入微任务队列，保证异步语义的一致性。"
+/>

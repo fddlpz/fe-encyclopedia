@@ -1,0 +1,454 @@
+---
+title: "21.2 代码优化：Tree Shaking / Code Splitting / 懒加载"
+description: "深入解析 Tree Shaking、Code Splitting、动态导入和懒加载的编译原理、配置方法与实战优化策略"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 21 章 加载性能优化"
+section: "21.2"
+tags: ["Tree Shaking", "Code Splitting", "懒加载", "动态导入", "Webpack", "Vite", "Rollup"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals"]
+related: ["21.1-resource-priority", "21.5-network-optimization", "22.2-js-optimization"]
+crossRefs: ["21.1-resource-priority.mdx", "21.5-network-optimization.mdx", "22.2-js-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 是现代 Web 应用的核心载体，但同时也是最大的性能瓶颈来源。一个典型的 React/Vue 应用，其打包后的 JavaScript 体积可能达到 500KB~2MB（gzip 前），在移动网络上需要数秒才能下载和执行。代码优化的三大支柱——Tree Shaking、Code Splitting 和懒加载——分别从"消除死代码"、"拆分代码块"和"延迟加载"三个维度解决这一问题。
+
+### Tree Shaking：基于 ES Module 的静态分析
+
+Tree Shaking（摇树优化）的概念源自 Rollup，现已被 Webpack、Vite、Parcel 等主流工具支持。其核心原理是：**利用 ES Module（ESM）的静态结构特性，在编译时确定模块间的依赖关系，从而剔除未被引用的导出（Dead Code Elimination）**。
+
+**ESM 与 CommonJS 的关键差异：**
+
+ESM 的 `import`/`export` 语法在语法层面就是静态的——不能在运行时条件性地导入或导出。这使得工具可以在不执行代码的情况下构建完整的模块依赖图（Module Dependency Graph）。相反，CommonJS 的 `require()` 是运行时函数调用，`module.exports` 可以被动态修改，工具无法静态确定哪些导出被使用。
+
+```javascript
+// ESM：可 Tree Shake
+import { add } from './math';
+console.log(add(1, 2));
+
+// CommonJS：不可 Tree Shake
+const math = require('./math');
+console.log(math.add(1, 2));
+```
+
+**Tree Shaking 的编译流程：**
+
+1. **解析（Parse）**：将源码解析为 AST（抽象语法树）
+2. **模块图构建（Module Graph）**：追踪所有 `import` 和 `export` 语句，构建模块间的引用关系
+3. **标记（Mark）**：从入口文件开始，递归标记所有被引用的导出为"存活"（Live）
+4. **清除（Sweep）**：删除所有未被标记的导出及其副作用-free 的依赖
+5. **压缩（Minify）**：Terser/SWC 进一步删除死代码并压缩变量名
+
+**副作用（Side Effects）的挑战：**
+
+并非所有未引用的代码都可以安全删除。若一个模块在导入时执行了全局注册（如 `Array.prototype.myMethod = ...`）、发起了网络请求或修改了 DOM，删除它可能改变程序行为。打包器通过 `package.json` 中的 `"sideEffects"` 字段处理这一问题：
+
+```json
+{
+  "name": "my-lib",
+  "sideEffects": [
+    "*.css",
+    "./src/polyfill.js"
+  ]
+}
+```
+
+`"sideEffects": false` 告诉打包器："此包的所有模块都是无副作用的，可以安全地删除未引用的导出。"若未设置此字段，打包器会保守地保留所有代码。
+
+### Code Splitting：运行时加载的代码块
+
+Code Splitting（代码分割）将单个巨大的 bundle 拆分为多个较小的 chunk，按需加载或并行加载。其底层机制涉及**模块加载器（Module Loader）**的运行时实现。
+
+**Webpack 的 Code Splitting 策略：**
+
+1. **入口分割（Entry Splitting）**：为每个页面配置独立的 entry point，生成独立的 bundle
+2. **动态导入（Dynamic Import）**：`import()` 语法触发运行时异步加载
+3. **公共代码提取（Common Splitting）**：`SplitChunksPlugin` 将共享模块提取到独立的 chunk
+
+**`import()` 的运行时机制：**
+
+当代码执行到 `import('./module.js')` 时，模块加载器：
+1. 检查该 chunk 是否已加载（通过全局 chunk 注册表）
+2. 若未加载，创建 `<script>` 标签（或 `fetch` + `eval`）加载 chunk
+3. 解析 chunk 的依赖图，递归加载子 chunk
+4. 执行 chunk 的工厂函数，缓存导出
+5. 返回 Promise，resolve 模块的 namespace 对象
+
+**SplitChunksPlugin 的缓存组策略：**
+
+```javascript
+// Webpack 默认的 splitChunks 配置逻辑
+{
+  splitChunks: {
+    chunks: 'all', // 对同步和异步 chunk 都生效
+    cacheGroups: {
+      // 默认 vendors 组：提取 node_modules 中的模块
+      defaultVendors: {
+        test: /[\\/]node_modules[\\/]/,
+        priority: -10,
+        reuseExistingChunk: true,
+      },
+      // 默认 common 组：提取被多个 chunk 共享的模块
+      default: {
+        minChunks: 2, // 至少被 2 个 chunk 共享才提取
+        priority: -20,
+        reuseExistingChunk: true,
+      },
+    },
+  }
+}
+```
+
+### 懒加载（Lazy Loading）与交互驱动的加载
+
+懒加载是 Code Splitting 的应用层模式，核心思想是：**只在需要时加载代码**。常见的触发时机包括：
+
+- **路由级别**：用户导航到特定路由时加载该路由的组件
+- **组件级别**：组件进入视口（Intersection Observer）时加载
+- **交互级别**：用户点击、滚动或输入时加载相关逻辑
+- **时间级别**：页面空闲时（`requestIdleCallback`）预加载可能需要的代码
+
+## 用法
+
+### Webpack 完整配置示例
+
+```javascript
+// webpack.config.js
+const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+module.exports = {
+  entry: {
+    main: './src/index.js',
+  },
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: '[name].[contenthash:8].js',
+    chunkFilename: '[name].[contenthash:8].chunk.js',
+    clean: true,
+    // 确保 publicPath 正确，否则动态导入的 chunk 路径会错误
+    publicPath: '/',
+  },
+  optimization: {
+    // 启用 Tree Shaking（生产模式默认开启）
+    usedExports: true,
+    sideEffects: true,
+    // 代码分割配置
+    splitChunks: {
+      chunks: 'all',
+      minSize: 20000,        // 20KB：小于此值的模块不分割
+      maxSize: 244000,       // 244KB：尝试将大于此值的 chunk 进一步拆分
+      minChunks: 1,
+      maxAsyncRequests: 30,  // 异步加载的最大并行请求数
+      maxInitialRequests: 30,// 入口点的最大并行请求数
+      cacheGroups: {
+        // React 生态单独打包
+        react: {
+          test: /[\\/]node_modules[\\/](react|react-dom|react-router-dom)[\\/]/,
+          name: 'react',
+          chunks: 'all',
+          priority: 40,
+        },
+        // UI 组件库单独打包
+        ui: {
+          test: /[\\/]node_modules[\\/](@mui|antd|element-plus)[\\/]/,
+          name: 'ui',
+          chunks: 'all',
+          priority: 30,
+        },
+        // 工具库
+        utils: {
+          test: /[\\/]node_modules[\\/](lodash|moment|dayjs)[\\/]/,
+          name: 'utils',
+          chunks: 'all',
+          priority: 20,
+        },
+        // 其他 vendors
+        vendors: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendors',
+          chunks: 'all',
+          priority: 10,
+          reuseExistingChunk: true,
+        },
+        // 业务公共代码
+        common: {
+          minChunks: 2,
+          chunks: 'all',
+          priority: 5,
+          reuseExistingChunk: true,
+        },
+      },
+    },
+    // 运行时 chunk 单独提取，利于长期缓存
+    runtimeChunk: { name: 'runtime' },
+  },
+  module: {
+    rules: [
+      {
+        test: /\.js$/,
+        exclude: /node_modules/,
+        use: {
+          loader: 'babel-loader',
+          options: {
+            presets: [
+              ['@babel/preset-env', { modules: false }], // 保持 ESM，利于 Tree Shaking
+              '@babel/preset-react',
+            ],
+          },
+        },
+      },
+    ],
+  },
+  plugins: [
+    new HtmlWebpackPlugin({ template: './public/index.html' }),
+  ],
+};
+```
+
+### Vite 配置示例
+
+```javascript
+// vite.config.js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { visualizer } from 'rollup-plugin-visualizer';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    visualizer({ open: true, gzipSize: true }), // 打包分析
+  ],
+  build: {
+    // Vite 使用 Rollup 进行生产构建，Tree Shaking 由 Rollup 自动处理
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // 将 React 生态拆分到独立 chunk
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'react';
+          }
+          // 将大型第三方库拆分
+          if (id.includes('node_modules/three')) {
+            return 'three';
+          }
+          if (id.includes('node_modules/@codemirror')) {
+            return 'codemirror';
+          }
+          // 将 node_modules 中其余部分打包为 vendor
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        },
+      },
+    },
+    // 代码分割后的 chunk 大小警告阈值
+    chunkSizeWarningLimit: 500,
+  },
+});
+```
+
+### React 路由级懒加载
+
+```javascript
+// React Router v6 + 懒加载
+import { Suspense, lazy } from 'react';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+
+// 使用 React.lazy 包裹动态导入
+const Home = lazy(() => import('./pages/Home'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+
+// 预加载函数（可在 hover 链接时调用）
+const prefetchDashboard = () => {
+  const DashboardPrefetch = import('./pages/Dashboard');
+};
+
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <Home />,
+  },
+  {
+    path: '/dashboard',
+    element: (
+      <Suspense fallback={<DashboardSkeleton />}>
+        <Dashboard />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/product/:id',
+    element: (
+      <Suspense fallback={<ProductSkeleton />}>
+        <ProductDetail />
+      </Suspense>
+    ),
+  },
+]);
+
+// 导航链接组件：hover 时预加载
+function NavLink({ to, children }) {
+  return (
+    <a
+      href={to}
+      onMouseEnter={() => {
+        if (to === '/dashboard') prefetchDashboard();
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+```
+
+### Vue 路由级懒加载
+
+```javascript
+// Vue Router 4
+import { createRouter, createWebHistory } from 'vue-router';
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    {
+      path: '/',
+      component: () => import('./views/Home.vue'), // 自动代码分割
+    },
+    {
+      path: '/about',
+      component: () => import('./views/About.vue'),
+    },
+    {
+      path: '/admin',
+      component: () => import('./views/Admin.vue'),
+      // 按组分块：将 Admin 相关的所有组件打包到一个 chunk
+      meta: { chunkName: 'admin' },
+    },
+  ],
+});
+
+// webpackChunkName 魔法注释（Webpack/Vite 均支持）
+const Admin = () => import(/* webpackChunkName: "admin" */ './views/Admin.vue');
+const AdminUser = () => import(/* webpackChunkName: "admin" */ './views/AdminUser.vue');
+```
+
+### 组件级懒加载（Intersection Observer）
+
+```javascript
+// 使用 react-intersection-observer 实现组件级懒加载
+import { useInView } from 'react-intersection-observer';
+import { lazy, Suspense, useState } from 'react';
+
+const HeavyChart = lazy(() => import('./HeavyChart'));
+
+function LazyChart({ data }) {
+  const { ref, inView } = useInView({ triggerOnce: true, rootMargin: '200px' });
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div ref={ref} style={{ minHeight: 400 }}>
+      {inView && (
+        <Suspense fallback={<ChartSkeleton />}>
+          <HeavyChart data={data} onLoad={() => setLoaded(true)} />
+        </Suspense>
+      )}
+      {!loaded && <ChartSkeleton />}
+    </div>
+  );
+}
+```
+
+## 实践
+
+### 案例：从单 Bundle 到优化分块的体积变化
+
+某 React 仪表盘应用初始为单入口 bundle，体积 1.8MB（gzip 后 520KB）。
+
+**优化前分析（webpack-bundle-analyzer）：**
+
+| 模块 | 体积（gzip） | 占比 |
+|------|-------------|------|
+| react + react-dom | 42KB | 8% |
+| @mui/material | 98KB | 19% |
+| lodash（完整引入） | 24KB | 5% |
+| three.js（仅在 3D 页面使用） | 180KB | 35% |
+| @codemirror（仅在编辑器页面使用） | 120KB | 23% |
+| 业务代码 | 56KB | 10% |
+
+**优化措施：**
+
+1. **Tree Shaking lodash**：将 `import _ from 'lodash'` 改为 `import debounce from 'lodash/debounce'`
+2. **动态导入 three.js**：仅在 3D 路由加载
+3. **动态导入 @codemirror**：仅在编辑器路由加载
+4. **SplitChunks 配置**：将 react、mui 提取到独立 chunk
+
+**优化后：**
+
+| Chunk | 体积（gzip） | 加载场景 |
+|-------|-------------|----------|
+| runtime | 3KB | 所有页面 |
+| react | 42KB | 所有页面 |
+| vendors | 65KB | 所有页面 |
+| main | 38KB | 所有页面 |
+| three | 180KB | 仅 3D 页面 |
+| codemirror | 120KB | 仅编辑器页面 |
+| **首屏总计** | **148KB** | **首屏** |
+
+**结果：** 首屏 JS 从 520KB 降至 148KB，Lighthouse Performance 评分从 62 提升至 91。
+
+### 代码分割决策矩阵
+
+| 场景 | 策略 | 工具支持 |
+|------|------|----------|
+| 多页面应用 | 每页独立 entry | Webpack entry |
+| SPA 路由 | 路由级动态导入 | React.lazy / Vue async component |
+| 大型第三方库 | 按库分块 | SplitChunks cacheGroups |
+| 仅在特定功能使用的代码 | 动态 `import()` | 所有现代打包器 |
+|  below-the-fold 组件 | Intersection Observer + 懒加载 | 自定义 + Suspense |
+| 打印/导出功能 | 点击时动态导入 | `import()` + 事件监听 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 错误引入完整库 | `import _ from 'lodash'` 而非按需引入 | 引入数十倍于实际需要的代码 |
+| `sideEffects` 配置错误 | 将含副作用的 CSS/ polyfill 模块标记为 `sideEffects: false` | 样式丢失、功能异常 |
+| 过度分割 | 将代码拆分为大量 < 5KB 的 chunk | HTTP 请求开销超过代码体积收益，HTTP/2 下虽可 multiplex 但仍增加解析成本 |
+| 瀑布式 chunk 加载 | chunk A 依赖 chunk B，chunk B 依赖 chunk C | 串行加载延长总时间，应通过预加载或合并减少依赖深度 |
+| 忽略预加载 | 路由懒加载但无 `prefetch`/`preload` | 用户点击后等待 chunk 下载，体验卡顿 |
+| Suspense 边界缺失 | React.lazy 组件外无 Suspense | 运行时错误，React 无法处理异步组件的加载状态 |
+| 动态导入路径含变量 | `import(./${name}.js)` | 打包器无法静态分析，可能包含所有匹配文件 |
+
+<Callout type="warning" title="Tree Shaking 的隐性失败"
+>
+即使配置了 Tree Shaking，以下情况仍可能导致优化失败：1) 使用 CommonJS 格式的依赖（如旧版库）；2) 通过 `babel-plugin-import` 等工具转换后的代码结构破坏 ESM 语义；3) 开发模式下 `usedExports` 未启用（通常生产模式才启用）；4) 依赖的 `package.json` 未声明 `"sideEffects": false`。建议使用 `webpack-bundle-analyzer` 或 `vite-bundle-visualizer` 定期审查实际打包内容。
+</Callout>
+
+<Quiz
+  question="为什么 Tree Shaking 需要 ES Module（ESM）格式才能有效工作？"
+  options={[
+    "ESM 文件体积更小",
+    "ESM 的 import/export 是静态的，打包器可在编译时确定依赖关系；CommonJS 的 require 是运行时调用，无法静态分析",
+    "ESM 执行速度更快",
+    "Tree Shaking 只支持 ESM 的语法风格"
+  ]}
+  correctIndex={1}
+  explanation="Tree Shaking 的核心是静态分析。ESM 的 import/export 在语法层面就是静态的，打包器可以在不执行代码的情况下构建完整的依赖图。CommonJS 的 require() 是运行时函数调用，可以出现在条件分支中或动态计算路径，工具无法确定哪些导出被实际使用。"
+/>
+
+<Quiz
+  question="在 Webpack 中，`splitChunks.chunks: 'all'` 的作用是什么？"
+  options={[
+    "将所有代码打包到一个 chunk 中",
+    "对同步和异步引入的模块都应用代码分割策略",
+    "只分割异步加载的模块",
+    "删除所有未使用的代码"
+  ]}
+  correctIndex={1}
+  explanation="`chunks: 'all'` 表示 SplitChunksPlugin 对同步（initial）和异步（async）引入的模块都生效。`chunks: 'initial'` 只对同步模块生效，`chunks: 'async'` 只对动态导入的模块生效。使用 'all' 可以最大化缓存复用和并行加载收益。"
+/>

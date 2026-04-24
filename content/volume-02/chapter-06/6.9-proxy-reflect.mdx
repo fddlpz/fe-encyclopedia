@@ -1,0 +1,214 @@
+---
+title: "6.9 反射与代理：Proxy 拦截器、Reflect API、响应式系统实现、Proxy.revocable"
+description: "Proxy 拦截器、Reflect API、响应式系统实现、Proxy.revocable"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.9"
+tags: ["Proxy", "Reflect", "响应式", "拦截器"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.6-prototype", "6.8-iterator"]
+crossRefs: ["11.4-hooks"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+Proxy 与 Reflect 是 ES6 引入的元编程（Metaprogramming）基础设施，允许开发者拦截并自定义对象的基本操作。Vue 3、MobX 等现代响应式框架的核心正是基于 Proxy 实现。
+
+### Proxy 的拦截机制
+
+Proxy 对象用于定义基本操作的自定义行为（如属性查找、赋值、枚举、函数调用等）。它由两个参数创建：`new Proxy(target, handler)`。
+
+`handler` 对象包含一系列"陷阱"（trap），每个陷阱对应一种内部方法：
+
+| 陷阱 | 拦截操作 | 触发场景 |
+|------|---------|---------|
+| `get` | `[[Get]]` | 属性访问 `obj.prop` |
+| `set` | `[[Set]]` | 属性赋值 `obj.prop = val` |
+| `has` | `[[HasProperty]]` | `in` 运算符 |
+| `deleteProperty` | `[[Delete]]` | `delete obj.prop` |
+| `ownKeys` | `[[OwnPropertyKeys]]` | `Object.keys`、`for...in` |
+| `getOwnPropertyDescriptor` | `[[GetOwnProperty]]` | `Object.getOwnPropertyDescriptor` |
+| `defineProperty` | `[[DefineOwnProperty]]` | `Object.defineProperty` |
+| `apply` | `[[Call]]` | 函数调用 `fn()` |
+| `construct` | `[[Construct]]` | `new` 调用 |
+| `getPrototypeOf` | `[[GetPrototypeOf]]` | `Object.getPrototypeOf` |
+| `setPrototypeOf` | `[[SetPrototypeOf]]` | `Object.setPrototypeOf` |
+| `preventExtensions` | `[[PreventExtensions]]` | `Object.preventExtensions` |
+| `isExtensible` | `[[IsExtensible]]` | `Object.isExtensible` |
+
+Proxy 的拦截发生在引擎层面，几乎覆盖了对象的所有基本操作。但 Proxy 也存在无法拦截的操作：
+
+- 严格相等比较 `===`（无法伪造身份）。
+- `typeof` 操作符（对 Proxy 返回 `"object"` 或 `"function"`）。
+- 部分内部槽访问（如私有字段 `#field` 无法被 Proxy 拦截）。
+
+### Reflect API 的设计意图
+
+Reflect 是一个内置对象，提供与 Proxy 陷阱一一对应的静态方法。它的设计目的有三：
+
+1. **将 Object 上的内部操作标准化**：如 `Reflect.defineProperty` 返回布尔值表示成功与否，而 `Object.defineProperty` 在失败时抛出异常。
+2. **作为 Proxy 陷阱的默认行为**：在 Proxy 陷阱中，通常应以 `Reflect.get(target, prop, receiver)` 等方式调用默认行为，而非直接操作 `target`。
+3. **提供可靠的 `this` 绑定传递**：如 `Reflect.get` 的第三个参数 `receiver` 可确保 getter 中的 `this` 正确指向 Proxy 对象。
+
+```js
+const proxy = new Proxy(target, {
+  get(target, prop, receiver) {
+    console.log('get', prop);
+    return Reflect.get(target, prop, receiver); // 保持默认行为
+  }
+});
+```
+
+### 响应式系统的 Proxy 实现
+
+现代响应式框架利用 Proxy 拦截属性访问和赋值，建立依赖收集与触发机制：
+
+```js
+function reactive(obj) {
+  return new Proxy(obj, {
+    get(target, key, receiver) {
+      track(target, key);      // 依赖收集
+      return Reflect.get(target, key, receiver);
+    },
+    set(target, key, value, receiver) {
+      const oldValue = target[key];
+      const result = Reflect.set(target, key, value, receiver);
+      if (oldValue !== value) {
+        trigger(target, key);  // 触发更新
+      }
+      return result;
+    }
+  });
+}
+```
+
+Vue 3 的响应式系统在此基础上进一步优化：
+
+- 使用 `WeakMap` 存储依赖关系，避免内存泄漏。
+- 对数组的索引访问和长度变更做特殊处理。
+- 对 `Map`、`Set` 等集合类型使用定制的 Proxy handler。
+- 结合 `effect` 调度器实现异步批量更新。
+
+### Proxy.revocable
+
+`Proxy.revocable()` 创建一个可随时撤销的 Proxy：
+
+```js
+const { proxy, revoke } = Proxy.revocable({ value: 42 }, {
+  get(target, key) { return target[key]; }
+});
+
+console.log(proxy.value); // 42
+revoke();
+console.log(proxy.value); // TypeError: Cannot perform 'get' on a proxy that has been revoked
+```
+
+可撤销 Proxy 适用于需要临时授予访问权限、之后强制回收的场景，如安全沙箱、资源租借等。
+
+<Callout type="warning" title="Proxy 的性能开销">
+Proxy 拦截涉及引擎内部调用路径的额外跳转，其属性访问性能显著慢于普通对象。在极端性能敏感的场景（如游戏主循环、大规模数据遍历）中，应避免对热点对象使用 Proxy。
+</Callout>
+
+## 用法
+
+```js
+// 验证型 Proxy：属性赋值时自动校验
+const validator = {
+  set(target, prop, value) {
+    if (prop === 'age') {
+      if (!Number.isInteger(value) || value < 0 || value > 150) {
+        throw new TypeError('Invalid age');
+      }
+    }
+    target[prop] = value;
+    return true; // set 陷阱必须返回布尔值
+  }
+};
+
+const person = new Proxy({}, validator);
+person.age = 25; // OK
+person.age = -1; // TypeError
+
+// 私有属性保护
+const hidePrivate = {
+  get(target, prop) {
+    if (typeof prop === 'string' && prop.startsWith('_')) {
+      throw new Error(`Access to private field ${prop} is denied`);
+    }
+    return Reflect.get(target, prop);
+  },
+  has(target, prop) {
+    if (typeof prop === 'string' && prop.startsWith('_')) return false;
+    return Reflect.has(target, prop);
+  },
+  ownKeys(target) {
+    return Reflect.ownKeys(target).filter(k => !String(k).startsWith('_'));
+  }
+};
+```
+
+## 实践
+
+### 不可变数据的代理实现
+
+```js
+function immutable(target) {
+  return new Proxy(target, {
+    set() { throw new Error('Object is immutable'); },
+    deleteProperty() { throw new Error('Object is immutable'); }
+  });
+}
+```
+
+注意：浅层 Proxy 只能阻止直接赋值，嵌套对象仍需递归代理。生产环境应使用 `Object.freeze` 或 Immutable.js。
+
+### 函数参数日志代理
+
+```js
+function trace(fn) {
+  return new Proxy(fn, {
+    apply(target, thisArg, args) {
+      console.log(`Call ${target.name}(${args.map(JSON.stringify).join(', ')})`);
+      return Reflect.apply(target, thisArg, args);
+    }
+  });
+}
+```
+
+### 与 Vue3 响应式的对比
+
+Vue 2 使用 `Object.defineProperty` 实现响应式，存在以下局限：
+
+- 无法检测新增/删除的属性（需 `Vue.set`/`Vue.delete`）。
+- 无法拦截数组索引赋值和 `length` 变更。
+- 初始化时需要递归遍历所有属性，性能开销大。
+
+Vue 3 的 Proxy 方案解决了以上所有问题，但带来了新的兼容性要求（IE11 不支持 Proxy）。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| Proxy 的 `this` 指向 | 目标对象内部方法中的 `this` 指向目标而非 Proxy | 使用 `bind` 或箭头函数；或在 get 陷阱中手动绑定 |
+| 原始值无法代理 | `new Proxy(123, {})` 抛出 TypeError | Proxy 只能包装对象或函数 |
+| 深层嵌套对象需递归代理 | 直接访问嵌套对象绕过 Proxy | 实现懒递归代理，在 get 陷阱中包装返回值 |
+| `ownKeys` 不自动过滤 Symbol | `Object.keys` 与 `Reflect.ownKeys` 行为差异 | 在 `ownKeys` 陷阱中根据需求过滤 |
+| 私有字段 `#` 不可代理 | 类私有字段存储在槽中，Proxy 无法拦截 | 使用闭包或 WeakMap 模拟私有属性 |
+
+## 测验
+
+<Quiz
+  question="Reflect.get 的第三个参数 receiver 的作用是什么？"
+  options={["指定返回值", "指定 getter 中 this 的指向", "指定默认值的来源对象", "无实际作用"]}
+  correctIndex={1}
+  explanation="Reflect.get(target, prop, receiver) 的 receiver 参数会在访问属性且该属性为 getter 时，作为 getter 函数中的 this 值。这在 Proxy 中确保 this 正确指向 Proxy 对象而非目标对象。"
+/>
+
+<Quiz
+  question="以下哪种操作 Proxy 无法拦截？"
+  options={["属性访问 obj.prop", "in 运算符", "严格相等 ===", "delete 操作"]}
+  correctIndex={2}
+  explanation="Proxy 无法拦截严格相等比较（===），因为 === 比较的是对象引用身份，Proxy 与目标对象具有不同的身份。typeof 操作也无法被伪造。"
+/>

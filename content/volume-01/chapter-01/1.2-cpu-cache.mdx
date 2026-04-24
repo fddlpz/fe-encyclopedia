@@ -1,0 +1,211 @@
+---
+title: "1.2 CPU 架构与缓存层次：寄存器、L1/L2/L3 Cache、缓存行、伪共享"
+description: "从 CPU 微架构角度理解寄存器、多级缓存（L1/L2/L3）的设计原理、缓存行的工作机制，以及伪共享（False Sharing）对并发程序性能的影响与规避策略。"
+volume: "卷一：计算机科学与网络基础"
+chapter: "第 1 章 计算机系统基础"
+section: "1.2"
+tags: ["CPU", "缓存", "Cache Line", "伪共享", "性能优化", "寄存器", "局部性原理", "缓存一致性"]
+difficulty: "基础"
+prerequisites: []
+related:
+  - { title: "1.1 数据在计算机中的表示", slug: "volume-01/chapter-01/1.1-binary-and-float" }
+  - { title: "1.3 内存管理：虚拟内存、分页与分段、栈与堆、V8 的堆结构", slug: "volume-01/chapter-01/1.3-memory-management" }
+crossRefs:
+  - { title: "Web Worker 与多线程计算", slug: "volume-01/chapter-01/1.4-process-thread" }
+  - { title: "React 并发渲染与调度", slug: "volume-03/chapter-09/9.3-react-concurrent" }
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+### 冯·诺依曼瓶颈与存储层次结构
+
+现代计算机遵循**冯·诺依曼体系结构**，其核心特征是“存储程序”——指令和数据以同等的地位存放在存储器中。然而，这一架构存在一个根本性的性能瓶颈：CPU 的运算速度远远超过了主内存（DRAM）的访问速度。在过去几十年中，CPU 性能遵循摩尔定律指数增长，而内存延迟的改善却相对缓慢，两者之间形成了巨大的速度鸿沟，被称为**内存墙（Memory Wall）**。
+
+为了弥合这一鸿沟，计算机体系结构引入了**存储层次结构（Memory Hierarchy）**。其设计哲学基于两个核心观察：
+1.  **局部性原理（Principle of Locality）**：程序在运行时，倾向于重复访问最近访问过的数据（时间局部性），以及访问与当前数据在物理上相邻的数据（空间局部性）。
+2.  **成本与速度的权衡**：速度越快的存储介质，单位容量的成本越高。通过构建一个由快到慢、由小到大、由昂贵到廉价的金字塔式层次结构，可以在经济上可行的前提下，让 CPU 感受到的平均访存速度接近最快的层级。
+
+这个层次从上到下依次为：寄存器 → L1 Cache → L2 Cache → L3 Cache → 主内存 → 磁盘/SSD。
+
+### 寄存器：CPU 的零级存储
+
+**寄存器（Register）** 位于 CPU 核心内部，由与 ALU（算术逻辑单元）相同的 CMOS 工艺制成，是计算机中最快的存储单元。其访问延迟通常在 **1 个时钟周期** 以内，容量极小（通常每个核心只有几十到几百字节）。寄存器直接参与指令的运算，任何数据在被处理之前都必须先加载到寄存器中。编译器的寄存器分配算法（Register Allocation）的目标，就是尽可能将频繁使用的变量保留在寄存器里，以减少对缓存和内存的访问。
+
+### 多级缓存架构（L1 / L2 / L3）
+
+缓存（Cache）是位于 CPU 和主内存之间的高速 SRAM（静态随机存取存储器）。SRAM 不需要像 DRAM 那样周期性刷新，因此速度更快、功耗更低，但集成度低、成本高。
+
+- **L1 Cache（一级缓存）**：每个 CPU 核心独立拥有。通常分为 **L1i（指令缓存）** 和 **L1d（数据缓存）**，以支持**哈佛架构**的并行访问（同时取指令和读写数据）。容量通常为 32KB ~ 128KB，访问延迟约 **3~5 个时钟周期**。
+- **L2 Cache（二级缓存）**：同样每个核心独占，但不再区分指令和数据。容量通常为 256KB ~ 1MB，访问延迟约 **10~20 个时钟周期**。
+- **L3 Cache（三级缓存）**：在同一块 CPU 芯片（Die）上的所有核心之间**共享**。容量通常为几 MB 到几十 MB（如 AMD 3D V-Cache 技术可达 96MB 以上），访问延迟约 **40~75 个时钟周期**。L3 缓存是核心间数据交换的重要通道。
+
+当 CPU 需要读取数据时，会按照 L1 → L2 → L3 → 主内存的顺序查找。如果在某一级找到，称为**缓存命中（Cache Hit）**；否则称为**缓存未命中（Cache Miss）**，需要继续向下一级查询，并将数据块加载到当前级缓存中。一次主内存访问可能需要数百个时钟周期，因此缓存命中率对程序性能具有决定性影响。
+
+### 缓存行（Cache Line）与预取
+
+缓存与主内存之间的数据传输并不是以单个字节为单位进行的，而是以**缓存行（Cache Line）**为单位。一个缓存行的大小通常为 **64 字节**（在 x86-64 架构中常见，也有 128 字节的架构）。这意味着，当 CPU 访问内存地址 `0x1000` 上的一个 4 字节整数时，整个从 `0x1000` 到 `0x103F` 的 64 字节数据块都会被加载到 L1d 缓存中。
+
+这种设计充分利用了**空间局部性**。对于顺序访问数组等数据结构，一次缓存未命中可以换来后续多次缓存命中，极大地提升了效率。现代 CPU 还配备了**硬件预取器（Hardware Prefetcher）**，它会在检测到顺序或步幅访问模式时，提前将后续缓存行加载到缓存中，进一步掩盖内存延迟。
+
+### 缓存一致性协议：MESI
+
+在多核 CPU 中，每个核心都有自己的 L1/L2 缓存。如果多个核心同时缓存了同一块内存数据，并且其中一个核心修改了它，如何保证其他核心看到的是最新值？这就需要**缓存一致性（Cache Coherence）**协议。
+
+**MESI 协议**是最经典的缓存一致性协议，其名称来源于缓存行的四种状态：
+- **M（Modified，已修改）**：缓存行已被当前核心修改，与主内存不一致。该缓存行是数据的唯一最新副本。
+- **E（Exclusive，独占）**：缓存行仅存在于当前核心的缓存中，且与主内存一致。
+- **S（Shared，共享）**：缓存行可能同时存在于多个核心的缓存中，且均未修改，与主内存一致。
+- **I（Invalid，无效）**：缓存行已失效，不能使用，必须重新从内存或其他核心加载。
+
+当一个核心要写一个处于 S 状态的缓存行时，必须向其他核心广播 **Invalidate** 消息，使它们的副本失效。这个过程虽然保证了正确性，但会引入额外的总线流量和延迟。
+
+### 伪共享（False Sharing）
+
+**伪共享**是并发编程中一个极其隐蔽的性能杀手。它发生在两个不同的线程频繁修改位于**同一缓存行**内的不同变量时。由于缓存一致性协议以缓存行为粒度工作，线程 A 修改变量 `x` 会导致整个缓存行失效，即使线程 B 只关心同一缓存行内的另一个变量 `y`。这迫使线程 B 不断地从 L3 缓存或主内存重新加载数据，导致双方都无法有效利用 L1/L2 缓存，性能急剧下降。
+
+伪共享的本质是“逻辑上无关，物理上相邻”。在高并发的计数器、队列头部/尾部指针等场景中尤为常见。
+
+## 用法
+
+### 利用局部性优化数组遍历
+
+```javascript
+// 反模式：列优先遍历（对于行优先存储的语言/结构效率低）
+// JavaScript 数组是连续的，但对象数组的内存布局不保证完全连续
+// 对于 TypedArray（如 Float64Array），内存完全连续
+
+const SIZE = 4096;
+const matrix = new Float64Array(SIZE * SIZE);
+
+// 差性能：列优先访问，跳跃式访存，破坏空间局部性
+function columnMajorSum() {
+  let sum = 0;
+  for (let col = 0; col < SIZE; col++) {
+    for (let row = 0; row < SIZE; row++) {
+      sum += matrix[row * SIZE + col];
+    }
+  }
+  return sum;
+}
+
+// 优性能：行优先访问，顺序访存，充分利用缓存行预取
+function rowMajorSum() {
+  let sum = 0;
+  for (let row = 0; row < SIZE; row++) {
+    for (let col = 0; col < SIZE; col++) {
+      sum += matrix[row * SIZE + col];
+    }
+  }
+  return sum;
+}
+```
+
+### 在 JavaScript 中检测与缓解伪共享
+
+虽然 JavaScript 是单线程语言（主线程），但在使用 **WebAssembly**、**Web Workers** 或 **SharedArrayBuffer** 进行多线程计算时，伪共享同样是一个问题。
+
+```javascript
+// 使用 SharedArrayBuffer 进行多线程求和时，避免伪共享的设计
+const THREADS = 4;
+const ITEMS_PER_THREAD = 1024;
+
+// 反模式：将每个线程的计数器紧密排列
+// const counters = new Int32Array(THREADS); // 4 个 4 字节整数，全部在一个 64 字节缓存行内！
+
+// 正模式：为每个线程的计数器分配独立的缓存行（Padding）
+// 假设缓存行大小为 64 字节，Int32Array 每个元素 4 字节
+// 每个线程占用 16 个元素（64 字节），只使用第一个元素
+const PADDING = 16; // 64 字节 / 4 字节 = 16
+const counters = new Int32Array(THREADS * PADDING);
+
+// 线程 i 只操作 counters[i * PADDING]
+function workerLogic(threadId) {
+  const index = threadId * PADDING;
+  for (let i = 0; i < ITEMS_PER_THREAD; i++) {
+    Atomics.add(counters, index, 1); // 使用原子操作避免竞态条件
+  }
+}
+```
+
+## 实践
+
+### 场景一：前端大数据量渲染的列表优化
+
+在渲染一个包含数万条数据的表格时，如果数据以对象数组的形式存储（如 `[{id, name, age}, ...]`），每个对象在内存中是独立的堆分配，字段之间不保证物理相邻。遍历时会产生大量的**指针追逐（Pointer Chasing）**，缓存命中率极低。
+
+**优化方案：结构体数组（SoA, Structure of Arrays）**
+将数据按列存储，使得同一字段的所有值在内存中连续排列。
+
+```typescript
+// 反模式：数组结构体（AoS）
+interface User { id: number; age: number; score: number; }
+const users: User[] = [{ id: 1, age: 25, score: 90 }, /* ... */];
+
+// 正模式：结构体数组（SoA）
+class UserTable {
+  ids: Int32Array;
+  ages: Int32Array;
+  scores: Float64Array;
+  constructor(size: number) {
+    this.ids = new Int32Array(size);
+    this.ages = new Int32Array(size);
+    this.scores = new Float64Array(size);
+  }
+  // 计算平均分：顺序遍历 Float64Array，缓存友好
+  averageScore(): number {
+    let sum = 0;
+    for (let i = 0; i < this.scores.length; i++) {
+      sum += this.scores[i];
+    }
+    return sum / this.scores.length;
+  }
+}
+```
+
+### 场景二：Web Worker 中的图像处理
+
+在 Web Worker 中对 `ImageData` 进行滤镜处理时，直接逐像素操作 `Uint8ClampedArray` 已经是缓存友好的。但要注意，如果多个 Worker 通过 `SharedArrayBuffer` 协作处理图像的不同区域，确保每个 Worker 处理的数据边界与缓存行对齐（64 字节对齐），可以避免不必要的缓存一致性流量。
+
+### 场景三：React 与 Vue 的虚拟 DOM Diff 优化
+
+现代前端框架的 Diff 算法本质上是在比较两棵树的节点。当组件状态更新时，框架会尽量复用已有的 DOM 节点。从缓存角度看，频繁创建和销毁 DOM 节点（涉及大量内存分配和对象初始化）会导致缓存和 TLB（Translation Lookaside Buffer）的抖动。因此，使用 `key` 属性帮助框架识别稳定节点的身份，不仅减少了 DOM 操作，也间接提升了内存访问的局部性。
+
+## 陷阱
+
+| 陷阱描述 | 典型表现 | 解决方案 |
+|---------|---------|---------|
+| **忽略空间局部性** | 遍历二维数组时采用列优先顺序，导致每次访问都跨越大片内存，缓存命中率极低 | 始终按照内存布局的物理顺序进行遍历（对于 C/C++/Rust/JS TypedArray 采用行优先） |
+| **伪共享导致并发退化** | 多线程程序中，各线程修改独立的计数器，但性能比单线程还差 | 在共享内存布局中为每个线程的数据添加 Padding（填充至 64 字节或 128 字节缓存行大小） |
+| **缓存行未对齐的跨行访问** | 一个 8 字节数据恰好跨越两个缓存行边界，需要两次缓存加载 | 在 C/C++/Rust 中使用 `alignas(64)`；在 JS/WASM 中通过内存分配器保证对齐 |
+| **盲目使用链表** | 链表节点分散在堆内存各处，遍历时的指针追逐导致大量缓存未命中 | 对于频繁顺序遍历的场景，优先使用数组或 TypedArray；仅在需要频繁插入/删除时考虑链表 |
+| **过大的对象导致缓存污染** | 一个热点结构体中混杂了频繁访问和不常访问的字段，导致缓存行被冷数据占据 | 将热字段（Hot Fields）集中排列在对象前部，或将冷热数据分离到不同结构体中 |
+| **误信对象属性访问的缓存优势** | 认为 `obj.x` 和 `obj.y` 在内存中相邻，但 V8 隐藏类（Hidden Class）的字段偏移不保证与声明顺序完全一致，且对象本身有头部开销 | 对于数值计算密集型任务，使用 TypedArray 而非普通对象数组 |
+
+<Callout type="info" title="前端开发者的缓存视角">
+虽然 JavaScript 开发者无法像 C++ 开发者那样直接控制内存布局，但理解缓存原理仍然至关重要。选择合适的数据结构（TypedArray vs 对象数组）、避免创建大量临时小对象（减少 GC 压力）、以及利用 Web Worker 进行并行计算时避免伪共享，都是将底层知识转化为前端性能优化的有效途径。
+</Callout>
+
+<Quiz
+  question="在多核 CPU 中，两个线程分别修改位于同一 64 字节缓存行内的不同变量，会导致什么现象？"
+  options={[
+    "程序崩溃或数据竞争",
+    "缓存命中率急剧下降，性能严重退化（伪共享）",
+    "CPU 自动将变量提升到寄存器中以避免冲突",
+    "操作系统会强制将两个线程调度到同一个核心上"
+  ]}
+  correctIndex={1}
+  explanation="这种现象称为伪共享（False Sharing）。由于缓存一致性协议以缓存行为粒度工作，一个线程对缓存行中任意字节的修改都会使其他核心上的该缓存行副本失效，导致其他线程不得不反复从下级缓存或内存重新加载数据，造成性能瓶颈。"
+/>
+
+<Quiz
+  question="为什么遍历 TypedArray 通常比遍历普通对象数组（Array<object>）性能更好？"
+  options={[
+    "TypedArray 的 API 更简单，调用开销小",
+    "TypedArray 的元素在内存中连续紧凑排列，空间局部性极佳；而对象数组的元素是分散的堆内存引用",
+    "TypedArray 的数据存储在寄存器中",
+    "V8 引擎对 TypedArray 有特殊的 JIT 优化，跳过了类型检查"
+  ]}
+  correctIndex={1}
+  explanation="TypedArray 底层对应一块连续的 ArrayBuffer，元素按值紧密排列。遍历时 CPU 预取器能有效工作，缓存命中率高。而普通对象数组存储的是指向堆中不同对象的引用（指针），对象本身在内存中分散分布，遍历时会频繁发生缓存未命中（Pointer Chasing）。"
+/>

@@ -1,0 +1,359 @@
+---
+title: "21.3 图片优化：WebP / AVIF / srcset / 响应式图片"
+description: "全面解析现代图片格式（WebP、AVIF）、响应式图片策略、懒加载与解码优化的原理与实战"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 21 章 加载性能优化"
+section: "21.3"
+tags: ["WebP", "AVIF", "srcset", "响应式图片", "懒加载", "LCP", "图片优化"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals"]
+related: ["20.2-core-web-vitals", "21.1-resource-priority", "21.5-network-optimization"]
+crossRefs: ["20.2-core-web-vitals.mdx", "21.1-resource-priority.mdx", "21.5-network-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+图片是现代网页中体积最大的资源类型，通常占页面总传输字节的 50%~80%。优化图片不仅能显著降低带宽消耗，更是改善 LCP（最大内容绘制）的最有效手段之一。图片优化涉及格式选择、尺寸适配、加载策略和解码性能四个维度。
+
+### 现代图片格式的编码原理
+
+**WebP（2010，Google）**
+
+WebP 同时支持有损和无损压缩，以及透明度（Alpha）和动画。其核心技术源自 VP8 视频编解码器：
+
+- **有损压缩**：使用块预测（Block Prediction）+ 变换编码 + 量化，类似 H.264 的帧内预测模式。相比 JPEG，在相同视觉质量下体积减少 25~35%。
+- **无损压缩**：使用变长编码（VLC）+ 2D 局部预测，相比 PNG 体积减少 26%。
+- **透明度**：8-bit Alpha 通道与有损颜色通道共存，而 JPEG 不支持透明，PNG 无损透明体积巨大。
+
+WebP 的缺点是编码速度较慢（尤其是无损模式），且极高分辨率图片的解码内存占用较高。
+
+**AVIF（2019，AOMedia）**
+
+AVIF 基于 AV1 视频编码标准，代表了当前图片压缩的最先进水平：
+
+- **编码技术**：使用四叉树分区（Quad-tree Partitioning）+ 方向性帧内预测 + 变换块自适应选择。这些技术源自视频编码对时空冗余的深度挖掘。
+- **HDR 支持**：支持 10-bit/12-bit 色深和广色域（BT.2020），适合高质量摄影展示。
+- **体积优势**：相比 JPEG，AVIF 在相同视觉质量下体积减少 50~70%；相比 WebP，减少 20~30%。
+
+AVIF 的主要缺点是编码速度极慢（比 WebP 慢 5~10 倍），因此通常需要预编码或在构建时生成，不适合运行时动态编码。
+
+**格式对比总结：**
+
+| 特性 | JPEG | PNG | WebP | AVIF |
+|------|------|-----|------|------|
+| 有损压缩 | 是 | 否 | 是 | 是 |
+| 无损压缩 | 否 | 是 | 是 | 是 |
+| 透明度 | 否 | 是 | 是 | 是 |
+| 动画 | 否 | 否 | 是 | 是 |
+| 浏览器支持 | 100% | 100% | 96%+ | 85%+ |
+| 典型体积（相对 JPEG） | 100% | 300%+ | 65% | 35% |
+
+### 响应式图片：srcset 与 sizes
+
+`srcset` 和 `sizes` 是 HTML 提供的响应式图片机制，允许浏览器根据设备像素密度（DPR）和布局尺寸选择最合适的图片版本。
+
+**密度描述符（x-descriptor）：**
+
+```html
+<img srcset="photo-1x.jpg 1x, photo-2x.jpg 2x, photo-3x.jpg 3x"
+     src="photo-1x.jpg" alt="Photo">
+```
+
+浏览器根据 `window.devicePixelRatio` 选择：DPR=1 选 1x，DPR=2（Retina）选 2x，DPR=3 选 3x。
+
+**宽度描述符（w-descriptor）+ sizes：**
+
+```html
+<img srcset="photo-400.jpg 400w,
+             photo-800.jpg 800w,
+             photo-1200.jpg 1200w,
+             photo-1600.jpg 1600w"
+     sizes="(max-width: 600px) 100vw,
+            (max-width: 1000px) 50vw,
+            33vw"
+     src="photo-800.jpg"
+     alt="Photo">
+```
+
+浏览器执行以下决策：
+1. 解析 `sizes` 媒体查询，确定图片在当前视口中的**显示宽度**（如 50vw = 500px）
+2. 乘以 DPR，得到所需的物理像素数（如 500px × 2 = 1000px）
+3. 从 `srcset` 中选择满足需求的最小图片（1000px 需求下选 1200w）
+
+### 图片解码与渲染流水线
+
+浏览器加载图片涉及以下阶段：
+
+1. **下载（Download）**：HTTP 请求获取图片字节流
+2. **解码（Decode）**：将压缩格式（JPEG/WebP/AVIF）转换为位图（Bitmap）。解码是 CPU 密集型操作，大图片可能需要 50~200ms
+3. **绘制（Paint）**：将位图绘制到屏幕。若图片在视口内，计入 LCP
+
+**`decoding="async"` 的作用：**
+
+默认情况下，浏览器在主线程同步解码图片，阻塞渲染。`decoding="async"` 指示浏览器将解码移至后台线程，主线程继续处理其他任务。代价是图片可能延迟几帧显示，产生"闪出"效果。
+
+**`loading="lazy"` 的 Intersection Observer 机制：**
+
+浏览器使用 Intersection Observer 监控带有 `loading="lazy"` 的图片。当图片进入视口 + 一定根边距（rootMargin，通常约 3000px 或视口高度的倍数）时，浏览器才开始下载。这显著减少了首屏请求数，但首屏图片不应使用懒加载，否则会延迟 LCP。
+
+## 用法
+
+### 现代图片的完整 HTML 模板
+
+```html
+<!-- 响应式、格式回退、懒加载的完整示例 -->
+<picture>
+  <!-- AVIF 优先 -->
+  <source
+    srcset="
+      /images/hero-400.avif 400w,
+      /images/hero-800.avif 800w,
+      /images/hero-1200.avif 1200w,
+      /images/hero-1600.avif 1600w
+    "
+    sizes="100vw"
+    type="image/avif"
+  >
+  <!-- WebP 回退 -->
+  <source
+    srcset="
+      /images/hero-400.webp 400w,
+      /images/hero-800.webp 800w,
+      /images/hero-1200.webp 1200w,
+      /images/hero-1600.webp 1600w
+    "
+    sizes="100vw"
+    type="image/webp"
+  >
+  <!-- JPEG 最终回退 -->
+  <img
+    srcset="
+      /images/hero-400.jpg 400w,
+      /images/hero-800.jpg 800w,
+      /images/hero-1200.jpg 1200w,
+      /images/hero-1600.jpg 1600w
+    "
+    sizes="100vw"
+    src="/images/hero-800.jpg"
+    alt="Hero image"
+    width="1600"
+    height="900"
+    loading="eager"
+    decoding="async"
+    fetchpriority="high"
+  >
+</picture>
+```
+
+### 使用 sharp 在构建时生成多格式图片
+
+```javascript
+// scripts/optimize-images.js
+const sharp = require('sharp');
+const fs = require('fs').promises;
+const path = require('path');
+
+const SIZES = [400, 800, 1200, 1600];
+const FORMATS = ['avif', 'webp', 'jpg'];
+const INPUT_DIR = './src/assets/images';
+const OUTPUT_DIR = './public/images';
+
+async function optimizeImage(inputPath) {
+  const basename = path.basename(inputPath, path.extname(inputPath));
+  const image = sharp(inputPath);
+  const metadata = await image.metadata();
+
+  for (const width of SIZES) {
+    // 跳过大于原图的尺寸
+    if (width > metadata.width) continue;
+
+    const resized = image.resize(width, null, {
+      withoutEnlargement: true,
+      fit: 'inside',
+    });
+
+    for (const format of FORMATS) {
+      const outputPath = path.join(OUTPUT_DIR, `${basename}-${width}.${format}`);
+
+      if (format === 'avif') {
+        await resized.avif({ quality: 75, effort: 4 }).toFile(outputPath);
+      } else if (format === 'webp') {
+        await resized.webp({ quality: 80 }).toFile(outputPath);
+      } else {
+        await resized.jpeg({ quality: 85, progressive: true }).toFile(outputPath);
+      }
+
+      console.log(`Generated: ${outputPath}`);
+    }
+  }
+}
+
+async function main() {
+  await fs.mkdir(OUTPUT_DIR, { recursive: true });
+  const files = await fs.readdir(INPUT_DIR);
+  const imageFiles = files.filter(f => /\.(jpg|jpeg|png)$/i.test(f));
+
+  await Promise.all(imageFiles.map(f => optimizeImage(path.join(INPUT_DIR, f))));
+}
+
+main().catch(console.error);
+```
+
+### 使用 CDN 图片服务（以 Cloudinary 为例）
+
+```html
+<!-- Cloudinary 自动格式选择和响应式尺寸 -->
+<img
+  src="https://res.cloudinary.com/demo/image/upload/w_800,q_auto,f_auto/sample.jpg"
+  srcset="
+    https://res.cloudinary.com/demo/image/upload/w_400,q_auto,f_auto/sample.jpg 400w,
+    https://res.cloudinary.com/demo/image/upload/w_800,q_auto,f_auto/sample.jpg 800w,
+    https://res.cloudinary.com/demo/image/upload/w_1200,q_auto,f_auto/sample.jpg 1200w
+  "
+  sizes="(max-width: 600px) 100vw, 50vw"
+  alt="Sample"
+  width="800"
+  height="600"
+  loading="lazy"
+>
+```
+
+`f_auto` 让 CDN 根据浏览器的 `Accept` 头自动选择最佳格式（AVIF > WebP > JPEG）。`q_auto` 使用机器学习自动选择最佳压缩质量。
+
+### 低质量图片占位（LQIP）实现
+
+```javascript
+// React LQIP 组件
+import { useState } from 'react';
+
+function LQIPImage({ src, placeholder, alt, width, height }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div style={{ position: 'relative', width, height, overflow: 'hidden' }}>
+      {/* 低质量占位图（Base64 编码，通常 < 1KB） */}
+      <img
+        src={placeholder}
+        alt=""
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          filter: loaded ? 'blur(0px)' : 'blur(20px)',
+          transition: 'filter 0.3s ease-out',
+          opacity: loaded ? 0 : 1,
+        }}
+      >
+      {/* 高清图 */}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          opacity: loaded ? 1 : 0,
+          transition: 'opacity 0.3s ease-out',
+        }}
+      >
+    </div>
+  );
+}
+
+// 使用：placeholder 是 tiny base64 图片
+<LQIPImage
+  src="/images/hero-1200.jpg"
+  placeholder="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
+  alt="Hero"
+  width={1200}
+  height={600}
+/>
+```
+
+## 实践
+
+### 案例：电商站图片优化全流程
+
+某电商站商品列表页每张卡片包含 1 张主图，页面展示 20 张卡片。优化前使用 800×800 无压缩 JPEG，单张 180KB，首屏图片总量 3.6MB。
+
+**优化方案：**
+
+| 步骤 | 措施 | 效果 |
+|------|------|------|
+| 格式升级 | JPEG -> AVIF | 单张 180KB -> 45KB |
+| 响应式尺寸 | 固定 800px -> `srcset` 提供 200/400/600/800px | 移动端加载 200px 版本（8KB） |
+| 懒加载 | 全部 eager -> 首屏 4 张 eager，其余 lazy | 首屏请求从 20 张降至 4 张 |
+| 解码优化 | 添加 `decoding="async"` | 减少主线程阻塞，INP 改善 |
+| 尺寸预留 | 添加 `width`/`height` | 消除图片加载导致的 CLS |
+| CDN | 自建源站 -> Cloudflare Images | 全球边缘缓存，TTFB 降低 |
+
+**结果：**
+- 桌面端首屏图片总量：3.6MB -> 180KB（AVIF 800px × 4 张）
+- 移动端首屏图片总量：3.6MB -> 32KB（AVIF 200px × 4 张）
+- LCP：2.8s -> 0.9s
+- CLS：0.15 -> 0.02
+
+### 图片格式选择决策树
+
+```
+需要动画？
+  是 -> 需要透明？
+    是 -> WebP/AVIF 动画（或保留 GIF 作为回退）
+    否 -> MP4/WebM 视频（比 GIF 体积小 90%+）
+  否 -> 需要透明？
+    是 -> 需要无损？
+      是 -> PNG（图标、UI 元素）或 AVIF 无损
+      否 -> AVIF/WebP 有损 + Alpha
+    否 -> 照片/复杂图像？
+      是 -> AVIF（优先）> WebP > JPEG
+      否 -> SVG（矢量图形，如图标、Logo）
+```
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 首屏图片使用 `loading="lazy"` | 浏览器延迟下载首屏 LCP 图片 | LCP 增加 500ms~数秒 |
+| 无尺寸预留 | `<img>` 未设置 width/height | 图片加载后撑开容器，导致严重 CLS |
+| 过度使用 `decoding="async"` | 所有图片都异步解码 | 首屏图片可能延迟显示，用户看到空白 |
+| 忽略格式回退 | 仅提供 AVIF，不支持浏览器无法显示 | 图片破碎，功能异常 |
+| `srcset` 与 `sizes` 不匹配 | `sizes` 描述错误导致浏览器选择错误尺寸 | 下载过大图片浪费带宽，或过小图片模糊 |
+| 运行时 AVIF 编码 | 在服务器实时将 JPEG 转为 AVIF | 编码耗时数秒，TTFB 暴增 |
+| 忽略 SVG 优化 | 直接导出设计软件的 SVG，含大量元数据 | SVG 体积可能比优化后大 5~10 倍 |
+
+<Callout type="info" title="AVIF 编码的构建时策略"
+>
+AVIF 编码速度极慢（高质量设置下单张 4K 图片可能需要 10~30 秒），绝不应在请求时实时编码。推荐策略：1) 构建时（Webpack/Vite 插件）生成 AVIF；2) 使用 CDN 的自动格式转换（Cloudinary、Cloudflare Polish、AWS Lambda@Edge）；3) 预生成后存储到对象存储（S3 + CloudFront）。
+</Callout>
+
+<Quiz
+  question="为什么首屏 LCP 图片不应使用 `loading='lazy'`？"
+  options={[
+    "懒加载会导致图片格式错误",
+    "浏览器会延迟下载懒加载图片，直到它进入视口，这会显著推迟 LCP 时间",
+    "懒加载与 LCP 图片的格式不兼容",
+    "懒加载会增加图片的文件大小"
+  ]}
+  correctIndex={1}
+  explanation="loading='lazy' 使用 Intersection Observer 延迟下载图片，直到图片接近视口。对于首屏 LCP 图片，这种延迟会直接增加 LCP 时间。首屏图片应使用 loading='eager'（默认值），甚至配合 preload 和 fetchpriority='high' 进一步加速。"
+/>
+
+<Quiz
+  question="`srcset` 使用 w-descriptor 时，`sizes` 属性的作用是什么？"
+  options={[
+    "指定图片的原始像素尺寸",
+    "告诉浏览器图片在当前布局中的显示宽度，帮助浏览器选择最合适的 srcset 候选",
+    "控制图片的下载优先级",
+    "设置图片的最大文件大小"
+  ]}
+  correctIndex={1}
+  explanation="sizes 属性描述图片在不同媒体条件下的显示宽度（如 50vw）。浏览器结合当前视口宽度和 devicePixelRatio，计算出需要的物理像素数，然后从 srcset 中选择满足需求的最小图片。没有正确的 sizes，浏览器无法做出最优选择。"
+/>

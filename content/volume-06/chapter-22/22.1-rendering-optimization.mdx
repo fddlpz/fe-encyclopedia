@@ -1,0 +1,322 @@
+---
+title: "22.1 渲染优化：减少回流重绘、分层、合成友好动画"
+description: "深入解析浏览器渲染流水线、回流与重绘的触发机制、合成层优化与 will-change 的正确使用"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 22 章 运行时性能优化"
+section: "22.1"
+tags: ["回流", "重绘", "合成", "will-change", "渲染流水线", "合成层"]
+difficulty: "进阶"
+prerequisites: ["20.1-rail", "21.7-rendering-modes"]
+related: ["20.1-rail", "21.7-rendering-modes", "22.4-animation-perf"]
+crossRefs: ["20.1-rail.mdx", "21.7-rendering-modes.mdx", "22.4-animation-perf.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+浏览器将 HTML、CSS 和 JavaScript 转换为屏幕上的像素，这一过程称为渲染流水线（Rendering Pipeline）。理解流水线的每个阶段及其相互依赖关系，是进行渲染优化的基础。现代浏览器的渲染流水线包含五个主要阶段：JavaScript、Style、Layout、Paint 和 Composite。
+
+### 渲染流水线的五个阶段
+
+**1. JavaScript**
+
+JavaScript 执行可能修改 DOM 结构或元素样式。这是流水线的起点，也是性能优化的关键控制点——减少不必要的 DOM 操作和样式计算，可以直接降低后续阶段的负载。
+
+**2. Style（样式计算）**
+
+浏览器将 CSS 选择器匹配到 DOM 节点，计算每个元素的最终计算样式（Computed Style）。这一阶段需要解析所有匹配的 CSS 规则，包括继承、层叠和自定义属性的解析。
+
+样式计算的复杂度与选择器数量和 DOM 深度相关。过于复杂的选择器（如 `div > ul li a span`）或大量的 CSS 规则会增加此阶段的耗时。
+
+**3. Layout（布局/回流）**
+
+浏览器根据计算样式计算每个元素在视口中的精确位置和尺寸，生成布局树（Layout Tree）。布局是递归过程——父元素的尺寸变化通常需要重新计算所有子元素的布局。
+
+**触发回流的属性（部分列表）：**
+
+- 元素几何属性：`width`、`height`、`padding`、`margin`、`border`
+- 定位属性：`top`、`left`、`right`、`bottom`、`position`
+- 文本属性：`font-size`、`line-height`、`text-align`
+- 其他：`display`、`overflow`、`min-height`、`float`、`clear`
+
+回流是渲染流水线中最昂贵的操作之一，因为它通常具有**级联效应**——修改一个元素的布局属性可能导致整个文档或大量子树的重新布局。
+
+**4. Paint（绘制）**
+
+浏览器将布局树中的每个元素绘制为像素。绘制操作按层（Layer）组织，文本、颜色、图像、边框和阴影等在此阶段被光栅化（Rasterize）为位图。
+
+**触发重绘的属性（但不触发回流）：**
+
+- `color`、`background-color`
+- `border-color`、`outline-color`
+- `box-shadow`、`text-shadow`
+- `visibility`
+
+**5. Composite（合成）**
+
+合成器线程（Compositor Thread）将各个图层（Layer）合并为最终屏幕图像。合成阶段在独立的线程上运行，不阻塞主线程。这是现代浏览器实现 60fps 流畅动画的关键机制。
+
+### 合成层（Compositing Layer）的原理
+
+浏览器并非将所有内容绘制到单个位图上，而是将页面划分为多个合成层。每个层独立光栅化，最终由 GPU 进行合成。
+
+**提升为独立合成层的条件：**
+
+- 3D 变换：`transform: translate3d()`、`rotate3d()`、`scale3d()`
+- 显式声明：`will-change: transform`、`will-change: opacity`
+- 视频元素、Canvas、WebGL 内容
+- `opacity` 动画或过渡
+- `position: fixed` 或 `position: sticky`
+- `filter` 属性
+- `mask` 或 `clip-path`
+
+**合成层的优势：**
+
+1. **主线程解放**：合成层的变化（如 `transform`、`opacity`）只需在合成器线程处理，无需主线程参与布局或绘制
+2. **GPU 加速**：层的光栅化和合成由 GPU 执行，利用 GPU 的并行处理能力
+3. **局部更新**：仅变化的层需要重绘，其他层可复用缓存
+
+**合成层的代价：**
+
+每个合成层都消耗 GPU 内存。过多的层（> 100 个）会导致：
+- GPU 内存耗尽（在移动设备上尤为严重）
+- 合成阶段本身成为瓶颈（"层爆炸"）
+- 层上传（Upload）到 GPU 的初始开销
+
+### 回流与重绘的量化成本
+
+在典型桌面设备上：
+
+| 操作 | 相对耗时 | 是否阻塞主线程 |
+|------|----------|---------------|
+| 修改 `transform`/`opacity` | 1x | 否（合成器线程） |
+| 修改 `color`/`background` | 10~50x | 是（需重绘） |
+| 修改 `width`/`height` | 100~1000x | 是（需回流+重绘） |
+| 强制同步布局（FSL） | 1000x+ | 是（强制立即回流） |
+
+## 用法
+
+### 避免强制同步布局（Forced Synchronous Layout）
+
+```javascript
+// 错误：交替读取和写入布局属性，导致强制同步布局
+function badLayout() {
+  const boxes = document.querySelectorAll('.box');
+  boxes.forEach(box => {
+    // 读取布局属性（触发回流计算）
+    const height = box.offsetHeight;
+    // 立即写入布局属性（需要最新的布局信息）
+    box.style.height = (height + 10) + 'px';
+  });
+  // 每次迭代都触发一次回流！N 个元素 = N 次回流
+}
+
+// 正确：先批量读取，再批量写入（读写分离）
+function goodLayout() {
+  const boxes = document.querySelectorAll('.box');
+
+  // 阶段1：批量读取
+  const heights = Array.from(boxes).map(box => box.offsetHeight);
+
+  // 阶段2：批量写入（使用 requestAnimationFrame 确保在下一帧执行）
+  requestAnimationFrame(() => {
+    boxes.forEach((box, i) => {
+      box.style.height = (heights[i] + 10) + 'px';
+    });
+  });
+  // 只触发 1 次回流
+}
+
+// 更优：使用 CSS transform 替代布局属性修改
+function bestLayout() {
+  // 使用 scaleY 模拟高度变化，完全避免回流
+  element.style.transform = 'scaleY(1.1)';
+  element.style.transformOrigin = 'top';
+}
+```
+
+### 使用 FastDOM 库自动批处理读写
+
+```javascript
+// FastDOM 自动将读写操作分批，避免 FSL
+import fastdom from 'fastdom';
+
+function updateLayout() {
+  fastdom.measure(() => {
+    // 所有读取操作
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+
+    fastdom.mutate(() => {
+      // 所有写入操作
+      element.style.width = (width * 2) + 'px';
+      element.style.height = (height * 2) + 'px';
+    });
+  });
+}
+```
+
+### 合成友好动画的正确实现
+
+```css
+/* 合成友好的动画：只触发 Composite 阶段 */
+.animated-element {
+  /* 使用 transform 替代 top/left */
+  transform: translate3d(0, 0, 0);
+
+  /* 使用 opacity 替代 visibility/display */
+  opacity: 1;
+
+  /* 提前声明 will-change，让浏览器创建合成层 */
+  will-change: transform, opacity;
+}
+
+/* 动画结束后移除 will-change，释放 GPU 内存 */
+.animated-element.animation-complete {
+  will-change: auto;
+}
+```
+
+```javascript
+// JavaScript 中控制 will-change 的生命周期
+const element = document.querySelector('.animated-element');
+
+// 动画开始前：声明 will-change
+function startAnimation() {
+  element.style.willChange = 'transform, opacity';
+  // 强制重绘，确保层创建
+  element.getBoundingClientRect();
+
+  element.animate([
+    { transform: 'translateX(0)', opacity: 0 },
+    { transform: 'translateX(200px)', opacity: 1 }
+  ], {
+    duration: 300,
+    easing: 'ease-out',
+  }).onfinish = () => {
+    // 动画结束后：移除 will-change
+    element.style.willChange = 'auto';
+  };
+}
+```
+
+### 使用 content-visibility 优化长列表
+
+```css
+/* content-visibility: auto 让浏览器跳过视口外元素的布局和绘制 */
+.card {
+  content-visibility: auto;
+  /* 必须包含尺寸预留，否则滚动条计算会出错 */
+  contain-intrinsic-size: auto 300px;
+}
+```
+
+```javascript
+// content-visibility 的 JavaScript 控制
+const container = document.querySelector('.long-list');
+
+// 为列表项添加 content-visibility
+function optimizeLongList() {
+  const items = container.querySelectorAll('.item');
+  items.forEach(item => {
+    item.style.contentVisibility = 'auto';
+    // 预估每个项目的高度，确保滚动条稳定
+    item.style.containIntrinsicSize = 'auto 200px';
+  });
+}
+```
+
+### CSS Containment 限制影响范围
+
+```css
+/* contain 属性限制元素的布局/样式/绘制影响范围 */
+.widget {
+  /* layout：内部布局不影响外部，外部不影响内部 */
+  /* paint：子元素不会溢出显示到外部 */
+  /* style：counter 和 quote 不影响外部 */
+  /* size：元素尺寸不依赖子元素（需显式设置宽高） */
+  /* strict：包含所有类型（layout style paint size） */
+  contain: layout paint;
+}
+
+/* 独立区域的优化 */
+.sidebar {
+  contain: layout style paint;
+}
+
+/* 已知尺寸的组件 */
+.avatar {
+  width: 48px;
+  height: 48px;
+  contain: strict;
+}
+```
+
+## 实践
+
+### 案例：大型数据表格渲染优化
+
+某财务系统需要渲染 1000 行 × 20 列的数据表格，滚动和筛选时严重卡顿。
+
+**诊断：**
+- Performance 面板显示每次筛选触发 200ms+ 的 Layout 和 150ms+ 的 Paint
+- 所有单元格都在同一个合成层，任何变化都需要重绘整个表格
+- 频繁读取 `offsetWidth`/`scrollHeight` 导致强制同步布局
+
+**优化方案：**
+
+| 优化项 | 措施 | 效果 |
+|--------|------|------|
+| 虚拟滚动 | 只渲染视口内 20 行，而非全部 1000 行 | Layout 从 200ms -> 5ms |
+| 行级 contain | 每行添加 `contain: layout paint` | 单行变化不影响其他行 |
+| 列固定优化 | 固定列使用独立合成层（`will-change: transform`） | 横向滚动流畅 |
+| 读写分离 | 使用 FastDOM 批量处理单元格尺寸计算 | 消除 FSL |
+| 虚拟化列 | 仅渲染视口内可见列 | Paint 从 150ms -> 8ms |
+
+**结果：** 筛选操作从 350ms 降至 15ms，滚动帧率从 15fps 提升至 60fps。
+
+### 渲染优化决策矩阵
+
+| 问题 | 诊断方法 | 解决方案 |
+|------|----------|----------|
+| 动画卡顿 | Performance 面板看是否有红色 Layout/Paint | 改用 transform/opacity，添加 will-change |
+| 滚动卡顿 | 查看 Composite 层数，是否过多或过少 | 使用 content-visibility，虚拟滚动 |
+| 交互响应慢 | 查看是否有长任务阻塞主线程 | 批量读写，使用 requestAnimationFrame |
+| 页面加载后布局偏移 | Layout Shift 轨道查看偏移源 | 图片/字体尺寸预留，避免动态插入内容 |
+| 复杂组件更新慢 | 查看 Style 阶段耗时 | 简化选择器，使用 CSS Containment |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 滥用 will-change | 对所有元素添加 `will-change: transform` | GPU 内存耗尽，合成阶段本身成为瓶颈 |
+| 动画结束后不清理 will-change | 动画完成后保留 will-change 声明 | 不必要的合成层持续占用 GPU 内存 |
+| 使用 top/left 做动画 | `position: absolute` + `top`/`left` 动画 | 每帧触发回流，无法达到 60fps |
+| 在 requestAnimationFrame 中读取布局 | `rAF` 回调中读取 `offsetHeight` 后写入 | 虽然比直接操作好，但仍可能触发 FSL |
+| 忽略 contain-intrinsic-size | 使用 `content-visibility: auto` 但不设置尺寸 | 滚动条跳动，布局偏移严重 |
+| 过度使用 CSS Containment | 对需要影响外部的元素使用 `contain: strict` | 元素溢出被裁剪，z-index 层级异常 |
+| 认为 GPU 层越多越好 | 为每个小元素创建独立合成层 | 层合成开销超过收益，帧率下降 |
+
+<Callout type="warning" title="will-change 的正确使用姿势"
+>
+`will-change` 是性能优化的"处方药"，而非"保健品"。正确用法：1) 在动画开始前添加，给浏览器时间创建合成层；2) 动画结束后立即移除，释放 GPU 资源；3) 不要对静态元素使用；4) 不要同时声明超过 2~3 个属性。Chrome DevTools 的 Layers 面板可以可视化查看当前页面的合成层分布，帮助诊断层爆炸问题。
+</Callout>
+
+<Quiz
+  question="以下哪个 CSS 属性的修改只会触发 Composite 阶段，而不会引起 Layout 或 Paint？"
+  options={["width", "background-color", "transform", "font-size"]}
+  correctIndex={2}
+  explanation="transform 和 opacity 是仅有的两个可以完全在合成器线程处理的属性。修改它们不会触发主线程上的 Layout 或 Paint，因此是创建 60fps 动画的首选属性。width 和 font-size 会触发 Layout，background-color 会触发 Paint。"
+/>
+
+<Quiz
+  question="什么是强制同步布局（Forced Synchronous Layout），为什么它有害？"
+  options={[
+    "浏览器强制使用 GPU 进行布局计算",
+    "在 JavaScript 中交替读取和写入布局属性，导致浏览器不得不在每次读取时立即执行回流计算",
+    "CSS 中使用了 !important 强制覆盖样式",
+    "服务器强制客户端重新渲染页面"
+  ]}
+  correctIndex={1}
+  explanation="强制同步布局发生在 JavaScript 先读取布局属性（如 offsetHeight）然后立即写入布局属性（如 style.width）的循环中。浏览器为了提供准确的读取值，必须在每次读取时立即执行回流计算。这导致原本可以批量优化的回流被强制串行执行多次，性能急剧下降。"
+/>

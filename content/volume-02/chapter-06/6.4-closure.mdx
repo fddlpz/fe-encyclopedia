@@ -1,0 +1,197 @@
+---
+title: "6.4 闭包与作用域链：闭包的形成条件、内存泄漏与闭包、模块模式、IIFE"
+description: "闭包的形成条件、内存泄漏与闭包、模块模式、IIFE"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.4"
+tags: ["闭包", "IIFE", "模块模式", "内存泄漏"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.3-execution-context", "6.5-this-binding"]
+crossRefs: ["11.5-hooks-rules"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+闭包（Closure）是 JavaScript 中最具威力的语言特性之一，也是面试和工程实践中的核心考点。从规范角度而言，闭包并非某种特殊的语法结构，而是词法作用域与一等函数（First-Class Function）自然结合的产物。
+
+### 闭包的定义与形成条件
+
+在 ECMAScript 规范中，闭包的概念内嵌于词法环境（Lexical Environment）模型中。当一个函数的内部代码引用了外部词法环境中的变量，且该函数在定义它的作用域之外被调用时，闭包就形成了。闭包的本质是：**函数与其引用的外部词法环境的组合**。
+
+形成闭包必须满足三个条件：
+
+1. **存在嵌套函数**：内部函数定义在外部函数的作用域内。
+2. **内部函数引用了外部变量**：内部函数的代码中使用了外部函数的参数或局部变量。
+3. **内部函数在外部作用域之外被引用**：内部函数作为返回值返回，或赋值给外部变量，或通过某种方式逃逸出其定义时的作用域。
+
+当这三个条件满足时，引擎必须保留外部函数的词法环境（及其环境记录），即使外部函数已经执行完毕并从调用栈中弹出。这个被保留的词法环境就是闭包捕获的"状态包"。
+
+### 闭包的内存模型
+
+从 V8 引擎的实现角度看，函数对象内部有一个 `[[Context]]` 隐藏属性（或称为 `[[Scopes]]`），指向其定义时的外部词法环境。当函数被创建时，引擎会分析其内部是否引用了外部变量。如果没有引用，引擎可能进行优化，不保留完整的父作用域链；如果有引用，则父词法环境被标记为闭包上下文，在垃圾回收时不会被回收。
+
+需要注意的是，引擎通常只保留被实际引用的变量，而非外部函数的全部局部变量。但在早期引擎或某些优化路径下，整个变量对象（Variable Object / Activation Object）可能被保留，导致意外的内存占用。
+
+### 模块模式与 IIFE
+
+在 ES6 模块普及之前，JavaScript 缺乏原生的模块系统。开发者利用闭包和 IIFE（Immediately Invoked Function Expression，立即执行函数表达式）实现了经典的模块模式（Module Pattern）：
+
+```js
+const myModule = (function() {
+  // 私有变量和函数，被闭包保护
+  let privateVar = 0;
+  function privateMethod() {
+    return privateVar++;
+  }
+
+  // 公开的 API
+  return {
+    publicMethod: function() {
+      return privateMethod();
+    },
+    getValue: function() {
+      return privateVar;
+    }
+  };
+})();
+```
+
+IIFE 创建了一个隔离的词法环境，内部声明的变量不会污染全局命名空间。返回的对象形成了闭包，使得外部可以通过公开的接口访问和修改内部状态，同时保持了状态的封装性。
+
+<Callout type="info" title="闭包不是内存泄漏">
+闭包本身不是内存泄漏，它是语言设计的正常行为。只有当闭包捕获了本不需要长期存活的大对象，且该闭包本身被长期持有时，才构成事实上的内存泄漏。例如事件监听器闭包中引用了整个 DOM 树或大型数据缓存。
+</Callout>
+
+## 用法
+
+```js
+// 工厂函数：利用闭包创建私有状态
+function createCounter(initial = 0) {
+  let count = initial;
+  return {
+    increment: () => ++count,
+    decrement: () => --count,
+    get: () => count,
+    reset: (value = initial) => { count = value; }
+  };
+}
+
+const c1 = createCounter(10);
+const c2 = createCounter(20);
+c1.increment(); // 11
+c2.increment(); // 21
+// c1 和 c2 各自拥有独立的 count 绑定
+
+// 函数柯里化（Currying）
+function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) {
+      return fn.apply(this, args);
+    }
+    return function(...nextArgs) {
+      return curried.apply(this, args.concat(nextArgs));
+    };
+  };
+}
+
+const add = (a, b, c) => a + b + c;
+const curriedAdd = curry(add);
+curriedAdd(1)(2)(3); // 6
+```
+
+## 实践
+
+### 内存管理与闭包泄漏
+
+闭包导致的内存泄漏通常发生在以下场景：
+
+1. **DOM 事件监听器**：闭包引用了已被移除的 DOM 元素，而监听器未被移除。
+2. **定时器**：`setInterval` 的回调闭包持有大量数据，但 `clearInterval` 未被调用。
+3. **大型数据结构**：闭包无意中捕获了本可以释放的大型数组或对象。
+
+防御策略：
+
+```js
+// 不好的做法：闭包引用了整个 data 数组
+function setupListeners(elements, data) {
+  elements.forEach((el, i) => {
+    el.addEventListener('click', () => {
+      console.log(data[i]); // 闭包捕获了整个 data 数组
+    });
+  });
+}
+
+// 改进：只捕获需要的值
+function setupListeners(elements, data) {
+  elements.forEach((el, i) => {
+    const item = data[i]; // 只绑定当前项
+    el.addEventListener('click', () => {
+      console.log(item);
+    });
+  });
+}
+
+// 更好的做法：使用 WeakMap 关联 DOM 与数据，不阻止 GC
+const dataMap = new WeakMap();
+function setupListeners(elements, data) {
+  elements.forEach((el, i) => {
+    dataMap.set(el, data[i]);
+    el.addEventListener('click', handler);
+  });
+}
+function handler(e) {
+  console.log(dataMap.get(e.currentTarget));
+}
+```
+
+### 循环与闭包（ES6 之前）
+
+在 `let` 引入之前，开发者使用 IIFE 在循环中创建独立的闭包作用域：
+
+```js
+for (var i = 0; i < 3; i++) {
+  (function(capturedI) {
+    setTimeout(() => console.log(capturedI), 10);
+  })(i);
+}
+```
+
+如今应优先使用 `let` 或 `forEach`：
+
+```js
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 10);
+}
+```
+
+### 性能优化
+
+闭包在创建时有一定的内存开销，且过度嵌套的闭包会增加作用域链查找的深度。在极端性能敏感的场景（如高频动画循环、大规模数据处理）中，应避免在循环体内创建不必要的函数闭包，可将函数提取到循环外部。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 循环中共享变量 | `for(var i...)` 中闭包都引用同一个 i | 使用 `let` 或 IIFE 创建独立绑定 |
+| 意外的全局捕获 | 闭包中遗漏变量声明，隐式创建全局变量 | 启用严格模式 `'use strict'`；使用 ESLint `no-undef` |
+| 闭包持有大型对象 | 内存占用持续增长，页面卡顿 | 审查闭包捕获的变量范围；使用 WeakMap/WeakSet |
+| `this` 在闭包中丢失 | 内部函数中的 `this` 不再指向外部对象 | 使用箭头函数继承外层 `this`；或使用 `bind` |
+| 模块循环依赖 | 两个 IIFE 模块相互引用，导致部分导出为 undefined | 重构模块依赖关系；使用 ES Module 的静态分析优势 |
+
+## 测验
+
+<Quiz
+  question="以下代码的输出是什么？`for(var i=0; i<3; i++){ setTimeout(()=>console.log(i), 0); }`"
+  options={["0, 1, 2", "3, 3, 3", "undefined, undefined, undefined", "报错"]}
+  correctIndex={1}
+  explanation="var 不存在块级作用域，三个 setTimeout 回调共享同一个 i 绑定。当回调执行时，循环已结束，i 的值为 3。"
+/>
+
+<Quiz
+  question="闭包会阻止垃圾回收器回收哪些内存？"
+  options={["所有全局变量", "被内部函数引用的外部词法环境中的变量", "所有 DOM 节点", "所有 setTimeout 回调"]}
+  correctIndex={1}
+  explanation="闭包只保留被内部函数实际引用的外部变量所在的词法环境。未被引用的局部变量通常仍会被回收（尽管某些老旧引擎可能保留整个变量对象）。"
+/>

@@ -1,0 +1,213 @@
+---
+title: "6.5 this 绑定规则：默认绑定、隐式绑定、显式绑定、new 绑定、箭头函数"
+description: "默认绑定、隐式绑定、显式绑定、new 绑定、箭头函数"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.5"
+tags: ["this", "bind", "call", "apply", "箭头函数"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.3-execution-context", "6.4-closure", "6.6-prototype"]
+crossRefs: ["11.4-hooks"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+`this` 是 JavaScript 中最令人困惑的机制之一，其绑定规则与词法作用域截然不同。与许多面向对象语言中 `this` 始终指向包含它的对象不同，JavaScript 的 `this` 绑定是动态的——它在运行时根据函数的调用方式确定。
+
+### 四种绑定规则
+
+ECMAScript 规范中，`this` 的绑定由执行上下文的抽象操作 `ResolveThisBinding()` 决定，其本质取决于函数的调用位置（Call Site）。可以归纳为四条优先级递减的规则：
+
+**1. new 绑定（New Binding）**
+
+当函数以 `new` 关键字调用时，引擎执行以下步骤：
+
+- 创建一个全新的空对象。
+- 该对象的原型（`[[Prototype]]`）链接到构造函数的 `prototype` 属性。
+- 构造函数执行上下文中的 `this` 绑定到这个新对象。
+- 如果构造函数没有显式返回对象，则返回这个新对象。
+
+此时 `this` 指向新创建的实例对象，这是绑定优先级最高的情况。
+
+**2. 显式绑定（Explicit Binding）**
+
+通过 `Function.prototype.call`、`Function.prototype.apply` 或 `Function.prototype.bind` 直接指定 `this` 的值。
+
+- `call(thisArg, arg1, arg2, ...)`：按参数列表调用函数。
+- `apply(thisArg, [arg1, arg2, ...])`：按数组（或类数组）传递参数。
+- `bind(thisArg, ...presetArgs)`：返回一个新函数，永久绑定 `this` 和预设参数。
+
+如果 `thisArg` 是原始值，会被 boxing 为对应的包装对象（严格模式下不装箱）。
+
+**3. 隐式绑定（Implicit Binding）**
+
+当函数作为对象的方法被调用时，`this` 绑定到调用它的那个对象（即点号前的对象）。
+
+```js
+const obj = {
+  name: 'Alice',
+  greet() {
+    console.log(this.name);
+  }
+};
+obj.greet(); // this → obj
+```
+
+隐式绑定容易丢失的场景：
+
+```js
+const greet = obj.greet;
+greet(); // 默认绑定，非严格模式下 this → globalThis，严格模式下 → undefined
+```
+
+**4. 默认绑定（Default Binding）**
+
+当函数独立调用（无修饰符）时，应用默认绑定。
+
+- 非严格模式：`this` 指向全局对象（浏览器 `window`，Node.js `globalThis`）。
+- 严格模式：`this` 为 `undefined`。
+
+注意：严格模式的判定依据是**调用位置**所在的上下文是否声明了 `"use strict"`，而非函数定义的位置。
+
+### 箭头函数的 this
+
+箭头函数（Arrow Function）是 ES6 引入的语法，它没有自己的 `this` 绑定。箭头函数中的 `this` 继承自外层（词法上最近的非箭头函数）执行上下文的 `ThisBinding`。这意味着：
+
+- 箭头函数不能作为构造函数使用（`new` 会抛出 TypeError）。
+- 箭头函数的 `this` 无法通过 `call`、`apply`、`bind` 改变。
+- 箭头函数没有 `arguments` 对象（应使用剩余参数 `...args`）。
+- 箭头函数没有 `super` 绑定。
+
+```js
+const obj = {
+  value: 42,
+  regular() {
+    setTimeout(function() {
+      console.log(this.value); // undefined（默认绑定）
+    }, 0);
+  },
+  arrow() {
+    setTimeout(() => {
+      console.log(this.value); // 42（继承 regular 的 this）
+    }, 0);
+  }
+};
+```
+
+### DOM 事件处理中的 this
+
+在 DOM0 级事件处理（`onclick = fn`）和 DOM2 级事件处理（`addEventListener`）中，回调函数的 `this` 默认指向触发事件的 DOM 元素。如果回调是箭头函数，则继承外层 `this`。
+
+```js
+document.getElementById('btn').addEventListener('click', function() {
+  console.log(this === document.getElementById('btn')); // true
+});
+
+document.getElementById('btn').addEventListener('click', () => {
+  console.log(this); // 外层 this（如 window 或模块上下文）
+});
+```
+
+## 用法
+
+```js
+// 显式绑定的实用技巧：借用方法
+const arrayLike = { 0: 'a', 1: 'b', length: 2 };
+const arr = Array.prototype.slice.call(arrayLike); // ['a', 'b']
+
+// 现代替代：Array.from
+const arr2 = Array.from(arrayLike);
+
+// bind 的偏函数应用
+function multiply(a, b) {
+  return a * b;
+}
+const double = multiply.bind(null, 2);
+double(5); // 10
+
+// 箭头函数在类字段中的使用（避免 this 丢失）
+class Counter {
+  count = 0;
+
+  // 类字段箭头函数，this 始终绑定实例
+  increment = () => {
+    this.count++;
+  };
+
+  // 传统方法在回调中需要 bind
+  decrement() {
+    this.count--;
+  }
+}
+
+const c = new Counter();
+document.getElementById('inc').addEventListener('click', c.increment); // 安全
+document.getElementById('dec').addEventListener('click', c.decrement.bind(c)); // 需要 bind
+```
+
+## 实践
+
+### React 中的 this 绑定
+
+在类组件时代，事件处理器的 `this` 绑定是常见痛点：
+
+```jsx
+class Button extends React.Component {
+  handleClick() {
+    // 直接绑定到 onClick 时，this 为 undefined（严格模式）
+    this.setState({ clicked: true });
+  }
+
+  render() {
+    // 方案 1：箭头函数（每次渲染创建新函数，可能破坏子组件的 shouldComponentUpdate）
+    return <button onClick={() => this.handleClick()}>Click</button>;
+
+    // 方案 2：在构造函数中 bind（推荐）
+    // this.handleClick = this.handleClick.bind(this);
+    // return <button onClick={this.handleClick}>Click</button>;
+
+    // 方案 3：类字段箭头函数（最简洁）
+    // handleClick = () => { this.setState(...); }
+  }
+}
+```
+
+Hooks 时代的函数组件从根本上消除了 `this` 问题，这也是 React 团队推广函数组件的重要原因之一。
+
+### 优先级判定口诀
+
+当多种绑定规则可能同时适用时，按以下优先级判定：
+
+```
+new 绑定 > 显式绑定 (call/apply/bind) > 隐式绑定 (obj.method()) > 默认绑定 (fn())
+```
+
+特殊情况：`bind` 返回的硬绑定函数被 `new` 调用时，`new` 绑定的优先级更高，但预设参数仍然保留。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 方法提取后 this 丢失 | `const fn = obj.method; fn()` 中 this 不再是 obj | 使用 `bind`；或使用箭头函数定义方法 |
+| 回调中的 this | `setTimeout(obj.method, 100)` 丢失隐式绑定 | 包装为箭头函数 `() => obj.method()`；或提前 bind |
+| 箭头函数误用为方法 | 箭头函数作为对象方法时，this 指向外层 | 对象方法使用常规函数；类字段方法可用箭头函数 |
+| 严格模式下的默认绑定 | 独立调用函数时 this 为 undefined | 确保调用时通过对象或显式绑定提供 this |
+| 类原型方法中的 this | 解构或传递引用后丢失实例绑定 | 使用类字段箭头函数，或在构造函数中 bind |
+
+## 测验
+
+<Quiz
+  question="以下代码的输出是什么？`const obj = { name: 'obj', fn: () => console.log(this.name) }; obj.fn();`（非严格模式）"
+  options={["'obj'", "undefined", "globalThis 的 name 属性", "报错"]}
+  correctIndex={2}
+  explanation="箭头函数没有自己的 this，它继承外层词法环境的 this。obj.fn 定义在全局作用域中，外层 this 为 globalThis（浏览器中为 window），因此输出 window.name。"
+/>
+
+<Quiz
+  question="`new` 绑定与 `bind` 硬绑定同时存在时，哪个优先级更高？"
+  options={["bind 更高", "new 更高", "两者冲突报错", "取决于执行环境"]}
+  correctIndex={1}
+  explanation="new 绑定的优先级高于显式绑定。当 new 调用一个硬绑定函数时，this 会被重新绑定到新创建的对象上，但 bind 预设的参数仍然有效。"
+/>

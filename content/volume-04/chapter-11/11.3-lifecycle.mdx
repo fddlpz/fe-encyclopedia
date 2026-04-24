@@ -1,0 +1,155 @@
+---
+title: "11.3 组件生命周期：类组件生命周期图谱、函数组件与 Hooks 的等价映射"
+description: "类组件生命周期图谱、函数组件与 Hooks 的等价映射"
+volume: "卷四：框架与状态管理"
+chapter: "第 11 章 React 原理与生态"
+section: "11.3"
+tags: ["生命周期", "Hooks", "useEffect", "组件"]
+difficulty: "基础"
+prerequisites: []
+related: ["11.4-hooks", "11.5-hooks-rules"]
+crossRefs: ["6.4-closure"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+React 组件的生命周期描述了组件从创建、更新到销毁的整个过程。在类组件时代，生命周期方法提供了细粒度的控制点；Hooks 时代虽然 API 不同，但生命周期的概念依然存在，只是以副作用（Effect）的形式表达。
+
+### 类组件生命周期图谱
+
+类组件的生命周期分为三个阶段：
+
+**挂载阶段（Mounting）**：
+
+1. `constructor(props)`：初始化 state 和绑定事件处理器。
+2. `static getDerivedStateFromProps(props, state)`：罕见场景下根据 props 派生 state。
+3. `render()`：返回 JSX。
+4. `componentDidMount()`：组件已插入 DOM，适合发起网络请求、订阅事件。
+
+**更新阶段（Updating）**：
+
+1. `static getDerivedStateFromProps(props, state)`
+2. `shouldComponentUpdate(nextProps, nextState)`：返回 false 可跳过本次渲染。
+3. `render()`
+4. `getSnapshotBeforeUpdate(prevProps, prevState)`：在 DOM 更新前获取信息（如滚动位置）。
+5. `componentDidUpdate(prevProps, prevState, snapshot)`：组件已更新，可执行副作用。
+
+**卸载阶段（Unmounting）**：
+
+- `componentWillUnmount()`：清理订阅、定时器、事件监听器。
+
+**错误处理**：
+
+- `static getDerivedStateFromError(error)`：渲染备用 UI。
+- `componentDidCatch(error, info)`：记录错误信息。
+
+### 函数组件与 Hooks 的等价映射
+
+函数组件没有生命周期方法，但 `useEffect` 和 `useLayoutEffect` 可以表达等价的语义：
+
+| 类组件 | 函数组件（Hooks） |
+|--------|------------------|
+| `componentDidMount` | `useEffect(() => {...}, [])` |
+| `componentDidUpdate` | `useEffect(() => {...}, [deps])`（需手动比较） |
+| `componentWillUnmount` | `useEffect(() => { return () => {...}; }, [])` |
+| `shouldComponentUpdate` | `React.memo` + `useMemo`/`useCallback` |
+| `getSnapshotBeforeUpdate` | `useLayoutEffect`（语义接近但不完全相同） |
+| `componentDidCatch` | 错误边界仍需类组件（React 19 前） |
+
+<Callout type="info" title="useEffect 不是生命周期的直接映射">
+React 团队强调 useEffect 的设计意图是同步外部系统（如 DOM、网络、定时器），而非对应某个生命周期方法。过度关注"等价映射"可能导致错误的思维模式。正确的思考方式是："我的副作用依赖什么数据？在什么情况下需要重新执行？"
+</Callout>
+
+### useLayoutEffect 与 useEffect 的区别
+
+- `useLayoutEffect`：在浏览器绘制（paint）之前同步执行，阻塞渲染。适合需要同步测量 DOM 并立即调整布局的场景（如工具定位）。
+- `useEffect`：在浏览器绘制之后异步执行，不阻塞渲染。是大多数副作用的默认选择。
+
+滥用 `useLayoutEffect` 可能导致视觉卡顿，应优先使用 `useEffect`。
+
+## 用法
+
+```jsx
+// 类组件生命周期示例
+class Timer extends React.Component {
+  state = { seconds: 0 };
+
+  componentDidMount() {
+    this.interval = setInterval(() => {
+      this.setState(s => ({ seconds: s.seconds + 1 }));
+    }, 1000);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.interval);
+  }
+
+  render() {
+    return <div>{this.state.seconds}s</div>;
+  }
+}
+
+// 函数组件等价实现
+function Timer() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSeconds(s => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <div>{seconds}s</div>;
+}
+```
+
+## 实践
+
+### 派生 state 的替代方案
+
+`getDerivedStateFromProps` 是容易误用的生命周期。大多数场景应通过以下方式替代：
+
+- **完全受控组件**：props 变化时由父组件重新传入。
+- **完全非受控组件**：使用 `key` 属性重置组件状态。
+- **Memoization**：使用 `useMemo` 计算派生值，无需存入 state。
+
+### 清理副作用的重要性
+
+忘记清理副作用是内存泄漏和状态更新的常见原因：
+
+```jsx
+useEffect(() => {
+  const controller = new AbortController();
+  fetch('/api', { signal: controller.signal })
+    .then(r => r.json())
+    .then(setData);
+  return () => controller.abort(); // 清理：取消未完成的请求
+}, []);
+```
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| useEffect 依赖数组遗漏 | 副作用使用过时状态，逻辑异常 | 启用 ESLint `react-hooks/exhaustive-deps` |
+| 在 useEffect 中直接 await | 异步函数返回 Promise，cleanup 失效 | 在内部定义 async 函数并调用 |
+| 类组件中 setState 不合并 | 多次 setState 覆盖而非合并 | 使用函数式更新 `this.setState(prev => ...)` |
+| componentWillUnmount 中访问 DOM | DOM 已移除，操作无效 | 在 componentDidUpdate 或 useLayoutEffect 中处理 |
+
+## 测验
+
+<Quiz
+  question="useLayoutEffect 与 useEffect 的主要执行时机差异是什么？"
+  options={["useLayoutEffect 在渲染前执行，useEffect 在渲染后执行", "useLayoutEffect 同步执行且阻塞绘制，useEffect 异步执行", "useLayoutEffect 只在挂载时执行", "没有差异，可以互换使用"]}
+  correctIndex={1}
+  explanation="useLayoutEffect 在浏览器绘制之前同步执行，会阻塞渲染流程。useEffect 在绘制之后异步执行，不会阻塞。大多数场景应使用 useEffect。"
+/>
+
+<Quiz
+  question="以下哪个 Hooks 组合等价于 componentDidMount + componentWillUnmount？"
+  options={["useEffect(() => {}, [deps])", "useEffect(() => { return () => {}; }, [])", "useLayoutEffect(() => {}, [])", "useMemo(() => {}, [])"]}
+  correctIndex={1}
+  explanation="useEffect 传入空依赖数组 [] 时，副作用只在挂载后执行。返回的清理函数只在卸载时执行。这等价于 componentDidMount + componentWillUnmount 的组合。"
+/>

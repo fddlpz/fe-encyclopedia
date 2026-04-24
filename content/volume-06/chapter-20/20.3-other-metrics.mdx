@@ -1,0 +1,295 @@
+---
+title: "20.3 其他关键指标：FCP / TTFB / TBT / TTI / SI"
+description: "全面解析 FCP、TTFB、TBT、TTI、SI 等辅助性能指标的原理、测量方法与实战应用"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 20 章 Web 性能指标体系"
+section: "20.3"
+tags: ["FCP", "TTFB", "TBT", "TTI", "SI", "性能指标", "Lighthouse"]
+difficulty: "进阶"
+prerequisites: ["20.1-rail", "20.2-core-web-vitals"]
+related: ["20.2-core-web-vitals", "20.4-lighthouse", "21.2-code-optimization", "22.2-js-optimization"]
+crossRefs: ["20.2-core-web-vitals.mdx", "20.4-lighthouse.mdx", "21.2-code-optimization.mdx", "22.2-js-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+除了 Core Web Vitals 之外，性能工程领域还存在一系列重要的辅助指标。这些指标或作为 Core Web Vitals 的前置条件（如 TTFB），或在实验室环境（Lab Data）中提供 Core Web Vitals 无法直接测量的洞察（如 TBT、TTI、SI）。理解这些指标有助于构建完整的性能监控体系。
+
+### FCP（First Contentful Paint，首次内容绘制）
+
+FCP 测量从导航开始到浏览器首次渲染任何来自 DOM 的内容的时间。"内容"包括文本、图片（包括背景图）、`<canvas>` 或 SVG 元素，但不包括纯白背景的 `<div>` 或仅由 CSS 边框构成的视觉元素。
+
+**浏览器实现机制：**
+
+浏览器在渲染流水线中设置一个"内容绘制标记"（Contentful Paint Marker）。当绘制阶段（Paint Phase）检测到来自 DOM 的非空白像素时，记录当前时间戳为 FCP。需要注意的是，FCP 与 FP（First Paint，首次绘制）不同：FP 可能在 FCP 之前触发，因为浏览器可能在渲染任何 DOM 内容前先绘制了背景色或默认样式。
+
+FCP 与 LCP 的关系：`FCP <= LCP` 恒成立。FCP 代表"有东西出现了"，LCP 代表"最大的东西出现了"。两者之间的差距反映了首屏主要内容加载的延迟。
+
+**优化 FCP 的关键路径：**
+- 消除渲染阻塞资源（Render-Blocking Resources）
+- 内联关键 CSS（Critical CSS）
+- 延迟非关键 JavaScript 的执行
+- 使用服务器端渲染（SSR）或静态站点生成（SSG）
+
+### TTFB（Time to First Byte，首字节时间）
+
+TTFB 测量从浏览器发起请求到收到响应第一个字节的时间。它是所有后续性能指标的基石——糟糕的 TTFB 会直接传导到 FCP、LCP 和 INP。
+
+**TTFB 的完整链路分解：**
+
+```
+TTFB = DNS 查询 + TCP 握手 + TLS 握手 + 服务器处理 + 网络传输
+```
+
+- **DNS 查询（0~200ms）**：将域名解析为 IP 地址。使用 DNS 预解析（`dns-prefetch`）或 HTTP 缓存可缩短此阶段。
+- **TCP 握手（1-RTT，~20~100ms）**：建立 TCP 连接。HTTP/3 使用 QUIC 基于 UDP，可将握手时间降至 0-RTT（重连时）。
+- **TLS 握手（1-2-RTT，~50~300ms）**：HTTPS 必需的握手。TLS 1.3 支持 1-RTT 甚至 0-RTT 恢复。
+- **服务器处理（高度可变）**：应用服务器生成响应的时间。受数据库查询、缓存命中率、业务逻辑复杂度影响。
+- **网络传输**：第一个字节从服务器到客户端的物理传输时间。CDN 边缘节点可显著缩短此阶段。
+
+**TTFB 的测量陷阱：**
+
+标准的 `responseStart - navigationStart` 计算包含了重定向时间。若页面存在多次重定向（如 HTTP -> HTTPS -> www -> 最终 URL），TTFB 会被显著夸大。在分析时应区分"重定向后 TTFB"（`responseStart - redirectEnd`）和"总 TTFB"。
+
+### TBT（Total Blocking Time，总阻塞时间）
+
+TBT 是实验室环境下的关键指标，用于**估计 INP 在真实环境中的表现**。它测量 FCP 到 TTI 之间所有长任务（Long Task，> 50ms）超出 50ms 阈值的部分之和。
+
+**计算公式：**
+
+```
+TBT = Σ(max(0, 长任务持续时间 - 50ms))
+```
+
+例如，一个 80ms 的长任务贡献 30ms 的 TBT，一个 150ms 的长任务贡献 100ms 的 TBT。
+
+**TBT 与 INP 的关系：**
+
+TBT 和 INP 都关注主线程阻塞，但测量方式不同：
+- TBT 是实验室指标，基于合成监控（Synthetic Monitoring）
+- INP 是真实用户指标，基于真实交互
+- TBT 计算 FCP 到 TTI 之间的所有长任务，INP 计算整个生命周期中的交互延迟
+- 一般而言，`TBT < 200ms` 的网站通常 INP 也较好；`TBT > 600ms` 的网站 INP 几乎一定很差
+
+**浏览器长任务 API 的底层实现：**
+
+浏览器在事件循环的每个任务（Task）开始时记录时间戳。当任务完成时，若持续时间超过 50ms，浏览器将其标记为长任务并通过 `PerformanceLongTaskTiming` API 暴露。长任务的归因信息（Attribution）可指向具体的脚本 URL、容器（iframe）或事件监听器。
+
+### TTI（Time to Interactive，可交互时间）
+
+TTI 测量页面达到"完全可交互"状态的时间。其定义包含三个条件：
+1. 页面已呈现有用的内容（FCP 已发生）
+2. 事件处理程序已注册完成（大多数可见元素的交互逻辑已绑定）
+3. 页面在 5 秒内无长任务（主线程处于空闲状态）
+
+**TTI 的算法实现（Lighthouse 采用）：**
+
+Lighthouse 从 FCP 之后开始向前搜索一个"安静窗口"（Quiet Window）——即连续 5 秒内没有超过 50ms 的长任务且没有超过 2 个 GET 请求的网络活动。TTI 被定义为安静窗口开始的时间。
+
+<Callout type="info" title="TTI 的局限性">
+TTI 在 Lighthouse 10 中的权重已被大幅降低，因为：1) 它与真实用户体验的相关性不如 INP；2) 对于持续加载内容的页面（如无限滚动），TTI 可能被无限延迟；3) 现代框架的 hydration 策略使得"完全可交互"的定义变得模糊。建议将 TTI 作为参考指标，而非优化目标。
+</Callout>
+
+### SI（Speed Index，速度指数）
+
+SI 是一个综合性视觉指标，测量页面内容在加载过程中的**视觉填充速度**。它通过捕获页面加载过程中的视频帧，计算每一帧中可见内容的填充比例，然后积分得到速度指数。
+
+**SI 的计算原理：**
+
+```
+SI = Σ(可见内容比例_t × 时间间隔)
+```
+
+SI 值越低越好。一个理想的 SI 曲线是：0ms 时 0% 填充，很快跳到 80%+，然后缓慢达到 100%。若曲线在 3s 时只有 20% 填充，SI 会很高。
+
+SI 的优势在于它**综合评估了整个加载过程的视觉体验**，而非仅关注某个时间点。但它的缺点是：1) 仅能在实验室环境测量；2) 对首屏定义敏感；3) 不同视口尺寸结果差异大。
+
+### 指标间的因果关系链
+
+这些指标之间存在明确的因果链：
+
+```
+TTFB -> FCP -> LCP
+  |       |      |
+  v       v      v
+影响 INP 和 CLS 的感知质量
+```
+
+TBT 和 TTI 则从侧面反映主线程健康度，间接预测 INP 表现。SI 提供视觉层面的综合评估。
+
+## 用法
+
+### 使用 Performance API 采集所有指标
+
+```javascript
+// 综合性能指标采集脚本
+function collectPerformanceMetrics() {
+  const nav = performance.getEntriesByType('navigation')[0];
+  if (!nav) return null;
+
+  const ttfb = nav.responseStart - nav.startTime;
+  const fcp = performance.getEntriesByName('first-contentful-paint')[0]?.startTime;
+  const lcp = performance.getEntriesByType('largest-contentful-paint').pop()?.startTime;
+
+  // TBT 需要通过 PerformanceObserver 累积计算
+  let tbt = 0;
+  const longTasks = performance.getEntriesByType('longtask');
+  longTasks.forEach(task => {
+    if (task.startTime >= fcp) {
+      tbt += Math.max(0, task.duration - 50);
+    }
+  });
+
+  return { ttfb, fcp, lcp, tbt };
+}
+
+// 更完整的采集：包含资源加载时间
+function collectResourceMetrics() {
+  const resources = performance.getEntriesByType('resource');
+  return resources.map(r => ({
+    name: r.name,
+    initiatorType: r.initiatorType,
+    duration: r.duration,
+    transferSize: r.transferSize,
+    // 各阶段分解
+    dns: r.domainLookupEnd - r.domainLookupStart,
+    tcp: r.connectEnd - r.connectStart,
+    tls: r.secureConnectionStart > 0 ? r.connectEnd - r.secureConnectionStart : 0,
+    ttfb: r.responseStart - r.requestStart,
+    download: r.responseEnd - r.responseStart
+  }));
+}
+```
+
+```javascript
+// 使用 PerformanceObserver 实时监控长任务和布局偏移
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    if (entry.entryType === 'longtask') {
+      console.warn('长任务 detected:', {
+        duration: entry.duration,
+        startTime: entry.startTime,
+        attribution: entry.attribution.map(a => ({
+          name: a.name,
+          containerType: a.containerType,
+          containerSrc: a.containerSrc
+        }))
+      });
+    }
+    if (entry.entryType === 'layout-shift') {
+      console.warn('布局偏移 detected:', {
+        value: entry.value,
+        hadRecentInput: entry.hadRecentInput,
+        sources: entry.sources.map(s => ({
+          node: s.node?.nodeName,
+          previousRect: s.previousRect,
+          currentRect: s.currentRect
+        }))
+      });
+    }
+  }
+});
+observer.observe({ entryTypes: ['longtask', 'layout-shift'] });
+```
+
+### 在 Lighthouse CI 中设置指标阈值
+
+```javascript
+// lighthouserc.js
+module.exports = {
+  ci: {
+    collect: {
+      url: ['https://example.com/', 'https://example.com/dashboard'],
+      numberOfRuns: 3, // 多次运行取中位数，减少方差
+    },
+    assert: {
+      assertions: {
+        // Core Web Vitals
+        'categories:performance': ['warn', { minScore: 0.9 }],
+        'largest-contentful-paint': ['error', { maxNumericValue: 2500 }],
+        'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
+        'total-blocking-time': ['warn', { maxNumericValue: 200 }],
+        // 其他关键指标
+        'first-contentful-paint': ['warn', { maxNumericValue: 1800 }],
+        'speed-index': ['warn', { maxNumericValue: 3400 }],
+        'time-to-first-byte': ['warn', { maxNumericValue: 600 }],
+        // 资源预算
+        'resource-summary:document:size': ['warn', { maxNumericValue: 20000 }], // 20KB
+        'resource-summary:script:size': ['warn', { maxNumericValue: 300000 }], // 300KB
+        'resource-summary:image:size': ['warn', { maxNumericValue: 1000000 }], // 1MB
+      },
+    },
+    upload: {
+      target: 'temporary-public-storage',
+    },
+  },
+};
+```
+
+## 实践
+
+### 案例：内容平台 Speed Index 优化
+
+某内容平台的 SI 高达 5.8s，用户反馈"页面白屏太久"。
+
+**诊断：**
+- Performance 面板显示，FCP 在 0.8s 触发（骨架屏），但 LCP 在 4.2s 才触发（文章首图）
+- SI 高是因为骨架屏到真实内容之间有漫长的"视觉空洞期"
+- 文章正文通过客户端 JavaScript 异步请求，在骨架屏渲染后 2s 才开始填充
+
+**优化方案：**
+
+| 阶段 | 优化前 | 优化后 |
+|------|--------|--------|
+| 0~0.8s | 白屏 | 骨架屏（不变） |
+| 0.8~1.2s | 骨架屏 | 流式 SSR：HTML 流中直接包含文章标题和正文 |
+| 1.2~2.5s | 骨架屏 | 渐进式图片加载：低质量占位图（LQIP）-> 高清图 |
+| 2.5~4.2s | 骨架屏 -> 突然显示全部内容 | 内容逐步填充，无视觉跳跃 |
+
+**结果：** SI 从 5.8s 降至 1.9s。关键改进是引入流式 SSR（Streaming SSR），让浏览器在收到 HTML 流的过程中逐步渲染内容，而非等待完整的 JSON 数据返回。
+
+### TBT 与框架初始化成本对比
+
+| 框架 | 初始 JS 体积（gzip） | 典型 TBT（中端机） | 主要瓶颈 |
+|------|----------------------|--------------------|----------|
+| 纯 HTML | 0KB | 0ms | 无 |
+| Vue 3（无 SSR） | ~34KB | 80~150ms | 响应式系统初始化、组件挂载 |
+| React 18（无 SSR） | ~42KB | 120~200ms | Hooks 初始化、Fiber 树构建 |
+| Angular（无 SSR） | ~130KB | 300~500ms | 依赖注入、变更检测、编译器 |
+| Next.js（SSR + hydration） | ~80KB | 200~400ms | hydration 过程：重建虚拟 DOM、事件绑定 |
+
+<Callout type="tip" title="框架选择建议">
+对于内容型站点（博客、文档、营销页），优先考虑 Astro、11ty 等"零 JS 默认"框架，仅在需要交互的组件岛屿上加载 JavaScript。对于重度交互应用（仪表盘、编辑器），React/Vue 的 TBT 成本是可接受的，但应使用 `React.lazy`、`Vue Async Component` 进行代码分割。
+</Callout>
+
+## 陷阱
+
+| 陷阱 | 描述 | 正确做法 |
+|------|------|----------|
+| 将 TTI 作为唯一优化目标 | 过度追求 TTI 可能导致延迟加载必要的交互逻辑，损害实际用户体验 | 以 INP 和 FID（历史数据）为核心，TTI 仅作参考 |
+| 混淆 FCP 和 FP | FP 可能只包含背景色，不代表"有内容" | 始终关注 FCP 而非 FP，FP 仅用于诊断白屏原因 |
+| 在弱网环境忽略 TTFB | 认为 TTFB 只与服务器有关，忽视网络链路的 RTT | 使用 CDN、边缘计算、连接预热（preconnect）降低网络延迟 |
+| TBT 测量窗口错误 | 计算 TBT 时包含 FCP 之前的长任务（如初始 HTML 解析） | TBT 的正确定义是 FCP 到 TTI 之间的长任务阻塞时间 |
+| 过度依赖 SI 进行 A/B 测试 | SI 受视口尺寸、屏幕分辨率、浏览器缩放影响极大 | A/B 测试时确保实验室环境完全一致，或优先使用 LCP/FCP |
+| 忽视指标间的权衡 | 为降低 FCP 内联 100KB CSS，导致 TTFB 增加 500ms | 关键 CSS 控制在 14KB（gzip）以内，这是 TCP 慢启动第一帧的近似上限 |
+| 混淆实验室指标和真实用户指标 | 用 Lighthouse 的 TBT 直接等价于用户的 INP | TBT 是 INP 的预测指标，非等价指标。应在生产环境部署 RUM 采集真实 INP |
+
+<Quiz
+  question="TBT 的计算公式是什么？"
+  options={[
+    "所有长任务（>50ms）的持续时间之和",
+    "FCP 到 TTI 之间所有长任务超出 50ms 阈值的部分之和",
+    "页面加载过程中所有 JavaScript 执行时间之和",
+    "主线程被阻塞的总时间"
+  ]}
+  correctIndex={1}
+  explanation="TBT = Σ(max(0, 长任务持续时间 - 50ms))，且只计算 FCP 到 TTI 之间的长任务。这个定义确保 TBT 反映的是对用户交互有实际影响的阻塞时间。"
+/>
+
+<Quiz
+  question="以下哪个指标是实验室环境（Lab Data）专用，无法通过真实用户监控（RUM）直接获取？"
+  options={["FCP", "LCP", "SI（Speed Index）", "TTFB"]}
+  correctIndex={2}
+  explanation="Speed Index 需要捕获页面加载过程的视频帧并计算视觉填充速度，这只能在受控的实验室环境中完成。FCP、LCP、TTFB 均可通过 Performance API 在真实用户浏览器中采集。"
+/>

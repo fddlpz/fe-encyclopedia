@@ -1,0 +1,248 @@
+---
+title: "6.6 原型与继承：构造函数、prototype、原型链、Object.create、class、私有字段"
+description: "构造函数、prototype、原型链、Object.create、class、私有字段"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.6"
+tags: ["原型", "继承", "class", "prototype"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.5-this-binding", "6.9-proxy-reflect"]
+crossRefs: []
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 的继承模型基于原型（Prototype），而非传统的类式继承。这一设计选择深受 Self 语言影响。ES6 引入的 `class` 关键字并非引入了新的继承模型，而是原型继承的语法糖，其底层机制与构造函数 + `prototype` 完全一致。
+
+### 构造函数与 prototype
+
+在 JavaScript 中，每个函数（除箭头函数外）在创建时都会自动获得一个 `prototype` 属性，该属性指向一个包含 `constructor` 属性的对象。`constructor` 指回函数本身。
+
+```js
+function Person(name) {
+  this.name = name;
+}
+Person.prototype.greet = function() {
+  return `Hello, ${this.name}`;
+};
+
+const alice = new Person('Alice');
+alice.greet(); // "Hello, Alice"
+```
+
+当使用 `new` 调用构造函数时，引擎执行以下操作：
+
+1. 创建新对象 `obj`。
+2. `obj.[[Prototype]]`（在现代浏览器中可通过 `__proto__` 访问，标准方式为 `Object.getPrototypeOf`）设置为构造函数的 `prototype`。
+3. 构造函数内部的 `this` 绑定到 `obj`。
+4. 执行构造函数体。
+5. 若构造函数未返回对象，则返回 `obj`。
+
+### 原型链（Prototype Chain）
+
+原型链是 JavaScript 实现继承的核心机制。当访问对象的属性或方法时，引擎首先查找对象自身，若未找到则沿 `[[Prototype]]` 向上查找，直到找到该属性或到达原型链顶端（`Object.prototype`，其 `[[Prototype]]` 为 `null`）。
+
+```
+alice → Person.prototype → Object.prototype → null
+```
+
+`instanceof` 操作符正是基于原型链工作：`alice instanceof Person` 检查 `Person.prototype` 是否存在于 `alice` 的原型链中。
+
+### Object.create
+
+`Object.create(proto)` 以指定对象为原型创建新对象，是原型继承最纯粹的形式：
+
+```js
+const animal = {
+  speak() {
+    return 'sound';
+  }
+};
+
+const dog = Object.create(animal);
+dog.speak = function() {
+  return 'woof';
+};
+```
+
+`Object.create(null)` 创建没有原型的对象，适合作为字典（Map 的轻量替代），避免 `toString` 等原型属性的干扰。
+
+### ES6 Class 的语法糖本质
+
+ES6 的 `class` 语法在语义上几乎完全映射到原型机制：
+
+```js
+class Person {
+  constructor(name) {
+    this.name = name;
+  }
+  greet() {
+    return `Hello, ${this.name}`;
+  }
+  static species() {
+    return 'Homo sapiens';
+  }
+}
+```
+
+等价于（近似）：
+
+```js
+function Person(name) {
+  this.name = name;
+}
+Person.prototype.greet = function() {
+  return `Hello, ${this.name}`;
+};
+Person.species = function() {
+  return 'Homo sapiens';
+};
+```
+
+关键差异在于 `class` 语法下：
+
+- 构造函数必须通过 `new` 调用，否则抛出 TypeError。
+- 类声明不会被提升（存在 TDZ）。
+- 类体默认处于严格模式。
+- 类方法不可枚举（`enumerable: false`）。
+
+### 继承与 super
+
+`extends` 关键字建立了原型链关联，并自动处理 `prototype` 与 `[[Prototype]]` 的双向链接：
+
+```js
+class Employee extends Person {
+  constructor(name, role) {
+    super(name); // 必须在使用 this 之前调用
+    this.role = role;
+  }
+  greet() {
+    return `${super.greet()} [${this.role}]`;
+  }
+}
+```
+
+`super` 在构造函数中指向父类的构造函数（即 `Person`），在方法中通过 `super.method()` 调用时，引擎内部使用 `Reflect.get(homeObject.[[Prototype]], 'method', this)` 确保 `this` 绑定正确。
+
+### 私有字段（ES2022）
+
+ES2022 引入了真正的私有字段，以 `#` 为前缀：
+
+```js
+class BankAccount {
+  #balance = 0;
+
+  deposit(amount) {
+    this.#balance += amount;
+  }
+
+  get #formatted() {
+    return `$${this.#balance.toFixed(2)}`;
+  }
+}
+```
+
+私有字段是真正的语言级私有，不在原型上，无法通过 `obj['#balance']`、Reflect.ownKeys 或 Proxy 拦截访问。尝试从类外部访问会报语法错误（编译时）或 TypeError（运行时）。私有字段在每个实例中独立存储，不会共享。
+
+<Callout type="info" title="私有字段与闭包私有">
+在私有字段之前，开发者使用 WeakMap 在模块级别模拟私有属性：
+
+```js
+const _balance = new WeakMap();
+class BankAccount {
+  constructor() { _balance.set(this, 0); }
+}
+```
+
+私有字段的优势在于语法简洁、引擎可优化访问路径，且不需要额外的模块级闭包。
+</Callout>
+
+## 用法
+
+```js
+// 原型继承的经典模式（ES5）
+function Animal(name) {
+  this.name = name;
+}
+Animal.prototype.speak = function() {
+  return `${this.name} makes a sound`;
+};
+
+function Dog(name, breed) {
+  Animal.call(this, name); // 继承实例属性
+  this.breed = breed;
+}
+Dog.prototype = Object.create(Animal.prototype);
+Dog.prototype.constructor = Dog; // 修复 constructor 指向
+Dog.prototype.speak = function() {
+  return `${this.name} barks`;
+};
+
+// 混入模式（Mixin）
+const Flyable = (Base) => class extends Base {
+  fly() {
+    return `${this.name} is flying`;
+  }
+};
+class FlyingDog extends Flyable(Dog) {}
+```
+
+## 实践
+
+### 避免原型污染
+
+原型污染（Prototype Pollution）是一种安全漏洞，攻击者通过修改 `Object.prototype` 影响所有对象：
+
+```js
+// 危险：合并对象时未过滤 __proto__
+function merge(target, source) {
+  for (const key in source) {
+    target[key] = source[key];
+  }
+}
+merge({}, JSON.parse('{"__proto__": {"isAdmin": true}}'));
+// 所有对象的 isAdmin 都变成了 true
+```
+
+防御措施：
+
+- 使用 `Object.create(null)` 作为数据容器。
+- 合并对象时过滤 `__proto__`、`constructor`、`prototype` 键。
+- 使用 `Object.freeze(Object.prototype)` 冻结原型（Node.js 18+ 支持 `--disable-proto`）。
+- 优先使用 `Map` 代替对象存储不可信键的数据。
+
+### 类字段与性能
+
+类字段（`field = value`）在语义上等价于在构造函数中赋值。但 Babel 转译后的代码可能将字段定义放在构造函数末尾，若子类构造函数中在 `super()` 之前访问字段会报错。原生实现中，实例字段在 `super()` 返回后、构造函数余下代码执行前初始化。
+
+### 继承内置类型的限制
+
+在 ES5 中继承 `Array`、`Error` 等内置类型存在问题，因为引擎对这些类型有特殊内部槽（如 `[[DefineOwnProperty]]`）。ES6 的 `class extends Array` 通过 `Symbol.species` 等机制解决了大部分问题，但某些老旧转译目标仍可能行为异常。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 忘记调用 super() | 派生类构造函数中访问 this 前未调用 super，抛出 ReferenceError | 始终将 super() 作为派生类构造函数的第一条语句 |
+| 原型链断裂 | 手动设置 Dog.prototype = Object.create(Animal.prototype) 后 constructor 丢失 | 显式修复 `Dog.prototype.constructor = Dog` |
+| 方法中的 this | 提取原型方法后 this 丢失 | 使用箭头函数类字段，或在调用时 bind |
+| 私有字段的 TDZ | 在声明前访问 `#field` 会报错 | 确保字段声明在访问之前（类字段按书写顺序初始化） |
+| 原型污染 | 不可信数据修改了 Object.prototype | 冻结原型、使用 Map、过滤危险键 |
+
+## 测验
+
+<Quiz
+  question="`Object.create(null)` 创建的对象与 `{}` 有什么本质区别？"
+  options={["没有区别", "前者没有原型，后者原型为 Object.prototype", "前者不可扩展", "前者不能被 JSON.stringify"]}
+  correctIndex={1}
+  explanation="Object.create(null) 创建的对象其 [[Prototype]] 为 null，不继承任何原型方法（如 toString、hasOwnProperty）。普通对象 {} 的原型链顶端是 Object.prototype。"
+/>
+
+<Quiz
+  question="ES6 class 中的方法默认是否可枚举？"
+  options={["是，与 ES5 原型方法一致", "否，class 方法默认 enumerable: false", "取决于严格模式", "取决于运行环境"]}
+  correctIndex={1}
+  explanation="class 语法下定义的方法默认不可枚举（enumerable: false），而直接给 prototype 赋值的方法默认可枚举。这是 class 语法与手动原型赋值的一个细微但重要的差异。"
+/>

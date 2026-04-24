@@ -1,0 +1,177 @@
+---
+title: "6.1 JS 历史与标准：ES1-6 里程碑、TC39 流程、ES 年度版本、Babel 转译原理"
+description: "ES1-6 里程碑、TC39 流程、ES 年度版本、Babel 转译原理"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.1"
+tags: ["ES规范", "TC39", "Babel", "JavaScript"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.2-type-system", "6.13-new-syntax"]
+crossRefs: ["11.2-jsx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 的诞生带有浓厚的历史偶然性。1995 年，Netscape 公司为了在浏览器中实现动态交互，聘请 Brendan Eich 在 10 天内设计并实现了这门语言。最初命名为 Mocha，随后改为 LiveScript，最终在 Netscape 与 Sun 的合作宣传中定名为 JavaScript。需要明确的是，JavaScript 与 Java 在语言设计层面没有直接继承关系，名称上的相似纯粹出于市场策略。
+
+### ECMAScript 标准演进
+
+JavaScript 的标准化进程由 Ecma 国际（原欧洲计算机制造商协会）旗下的 TC39 技术委员会主导。标准化的产物称为 ECMAScript（简称 ES），它是 JavaScript 的语法和核心 API 规范，而 JavaScript 是 ECMAScript 规范的一种实现（类似的实现还有 ActionScript、JScript 等）。
+
+**ES1-ES3：奠基阶段（1997-1999）**
+
+- **ES1（1997）**：首个标准化版本，确立了基本语法、类型系统、原型继承等核心机制。
+- **ES2（1998）**：仅做了编辑性修订，与 ISO/IEC 16262 国际标准对齐。
+- **ES3（1999）**：重大功能增强，引入了正则表达式、`try/catch` 异常处理、`do-while` 循环、`Function.prototype.apply` 等。这一版本奠定了现代 JavaScript 的基础，在浏览器中稳定存在了十余年。
+
+**ES4 的流产与 ES3.1（2008-2009）**
+
+2000 年代初期，TC39 开始筹划 ES4，目标是一次激进的语言升级，计划引入类、模块、命名空间、可选类型注解、尾递归优化等大量特性。然而，由于 Yahoo、Microsoft 等成员担心 ES4 过于复杂且会破坏现有 Web 兼容性，标准制定陷入严重分歧。2008 年，TC39 在奥斯陆会议上达成"和谐共识"（Harmony）：放弃 ES4，将其中部分温和特性提取为 ES3.1（后命名为 ES5），其余激进特性留待未来版本逐步引入。
+
+**ES5：现代 JavaScript 的起点（2009）**
+
+ES5 带来了严格模式（Strict Mode）、JSON 原生支持、`Array.prototype` 方法（forEach、map、filter、reduce、some、every）、Object.create / defineProperty / keys / getOwnPropertyNames、`Function.prototype.bind`、getter/setter 等。ES5 的发布标志着 JavaScript 从一门"玩具语言"向工程级语言转变。
+
+**ES6 / ES2015：语言大革命（2015）**
+
+经过六年的精心打磨，ES6 成为 JavaScript 历史上最重要的版本更新。它引入了：
+
+- 块级作用域（`let`、`const`）
+- 箭头函数
+- 类（`class`）语法糖
+- 模块（`import`/`export`）
+- Promise 与异步编程基础设施
+- 生成器（Generator）与迭代器协议
+- 模板字符串
+- 解构赋值
+- 默认参数、剩余参数、展开运算符
+- Map、Set、WeakMap、WeakSet
+- Proxy 与 Reflect
+- Symbol 类型
+
+ES6 的发布量如此之大，以至于 TC39 决定改变发布策略，从"多年一版"转为"每年一版"，并将版本命名从"Edition"改为年份（如 ES2015、ES2016）。
+
+**ES2016-ES2024：年度迭代**
+
+年度版本采用更轻量的提案驱动模式：
+
+- **ES2016**：`Array.prototype.includes`、指数运算符 `**`
+- **ES2017**：`async/await`、Object.entries/values、字符串填充 padStart/padEnd、尾随逗号、SharedArrayBuffer、Atomics
+- **ES2018**：异步迭代器（for-await-of）、Rest/Spread 属性、Promise.finally、正则表达式增强（命名捕获组、后行断言、dotAll、Unicode 属性转义）
+- **ES2019**：`Array.prototype.flat/flatMap`、Object.fromEntries、`String.prototype.trimStart/trimEnd`、可选的 catch 绑定、JSON.stringify 修复
+- **ES2020**：BigInt、动态 `import()`、空值合并 `??`、可选链 `?.`、Promise.allSettled、`globalThis`、for-in 枚举顺序标准化
+- **ES2021**：逻辑赋值运算符 `||=` `&&=` `??=`、数字分隔符、Promise.any、WeakRef、FinalizationRegistry
+- **ES2022**：类私有字段 `#`、类静态块、类顶层 `await`（模块）、at() 方法、Object.hasOwn、正则表达式匹配索引
+- **ES2023**：`Array.prototype.toSorted/toReversed/toSpliced/with`（不可变方法）、findLast/findLastIndex、Hashbang 语法
+- **ES2024**：`Array.prototype.groupBy`（后改为 Object.groupBy/Map.groupBy）、Promise.withResolvers、String.prototype.isWellFormed/toWellFormed、Atomics.waitAsync
+
+### TC39 提案流程
+
+TC39 采用五阶段（Stage 0-4）提案流程管理语言特性的演进：
+
+- **Stage 0（Strawperson）**：任何 TC39 成员或注册贡献者都可以提交的非正式想法。
+- **Stage 1（Proposal）**：正式提案，需阐明问题、解决方案、潜在风险，由 TC39 冠军（Champion）负责推进。
+- **Stage 2（Draft）**：规范初稿，使用正式 spec 语言描述语义，预计纳入未来版本。
+- **Stage 3（Candidate）**：规范完成，需实现方（浏览器引擎）提供实验性实现并通过验收测试（Test262）。
+- **Stage 4（Finished）**：至少有两个稳定实现并通过测试，将在下一个年度版本中发布。
+
+### Babel 转译原理
+
+由于浏览器对新语法的支持存在滞后，前端工程普遍使用 Babel 将高版本 ECMAScript 代码转译为兼容目标环境的低版本代码。Babel 的核心工作流分为三个阶段：
+
+1. **解析（Parse）**：使用 `@babel/parser`（原 Babylon）将源码解析为 AST（抽象语法树）。Babel 的 AST 基于 ESTree 规范，但扩展了 JSX、TypeScript、Flow 等语法节点类型。
+2. **转换（Transform）**：通过插件（Plugin）遍历并修改 AST。Babel 插件基于访问者模式（Visitor Pattern），对特定节点类型注册进入（enter）和退出（exit）钩子。预设（Preset）是一组插件的集合，如 `@babel/preset-env` 根据目标浏览器自动确定需要转译的语法特性。
+3. **生成（Generate）**：使用 `@babel/generator` 将修改后的 AST 还原为代码字符串，同时生成 Source Map。
+
+`@babel/preset-env` 的核心机制依赖于 `browserslist` 和 `@babel/compat-data`。它不再像旧版 preset 那样转译所有 ES2015+ 语法，而是根据目标环境按需加载插件，并借助 `core-js` 和 `@babel/runtime` 注入必要的 polyfill。Babel 7.4 之后推荐使用 `core-js` 的按需 polyfill 方案（`useBuiltIns: 'usage'` 或 `'entry'`），而非全局污染式的 `@babel/polyfill`。
+
+<Callout type="info" title="编译时 vs 运行时">
+Babel 主要处理语法转译（如箭头函数、类、async/await），而 API polyfill（如 Promise、Array.prototype.includes）需要在运行时提供。两者的分界线是：语法无法通过运行时库模拟，必须转译；API 可以通过在全局对象或原型上添加方法模拟。
+</Callout>
+
+## 用法
+
+```js
+// Babel 配置示例：babel.config.js
+module.exports = {
+  presets: [
+    ['@babel/preset-env', {
+      targets: '> 0.25%, not dead',
+      useBuiltIns: 'usage',
+      corejs: 3,
+      modules: false // 保留 ES 模块，供 Webpack/Rollup 做 Tree Shaking
+    }],
+    '@babel/preset-react',
+    '@babel/preset-typescript'
+  ],
+  plugins: [
+    '@babel/plugin-proposal-decorators',
+    '@babel/plugin-proposal-class-properties'
+  ]
+};
+```
+
+```js
+// 转译前（ES2020+）
+const data = await fetch('/api').then(r => r.json());
+const value = data?.nested?.value ?? 'default';
+const big = 123_456_789n;
+
+// 转译后（ES5 兼容，示意）
+function asyncGeneratorStep(gen, resolve, reject, _next, _throw, key, arg) { /* ... */ }
+function _asyncToGenerator(fn) { /* ... */ }
+var _data = /* await 被转译为 generator + Promise 状态机 */;
+var value = (_data != null && _data.nested != null ? _data.nested.value : void 0) !== null &&
+            (_data != null && _data.nested != null ? _data.nested.value : void 0) !== void 0
+            ? _data.nested.value : 'default';
+var big = BigInt(123456789); // BigInt 为内置对象，通常不转译数值字面量
+```
+
+## 实践
+
+### 选择转译策略
+
+| 场景 | 推荐方案 | 说明 |
+|------|---------|------|
+| 现代浏览器应用 | `preset-env` + `usage` | 仅转译必要语法，减少包体积 |
+| 库/工具包开发 | `preset-env` + `@babel/runtime` | 避免全局 polyfill 污染，使用 helper 内联 |
+| Node.js 服务端 | 根据 Node 版本决定 | Node 18+ 支持 ES2022 大部分特性，可能无需 Babel |
+| 遗留系统兼容 IE11 | 全量转译 + `core-js` 2/3 | 注意 `core-js` 版本与打包体积的平衡 |
+
+### 工程化注意事项
+
+- **browserslist 配置**：应在 `package.json` 或独立 `.browserslistrc` 中明确定义目标环境，这是 `preset-env` 和 `autoprefixer` 等工具的共享数据源。
+- **core-js 版本锁定**：`core-js` 3 与 2 的模块路径不兼容，混用会导致重复打包或运行时错误。
+- **Helper 重复问题**：不使用 `@babel/runtime` 时，每个文件中的 class 继承、async 函数等会被内联重复注入 helper 代码。库作者应使用 `@babel/plugin-transform-runtime` 将 helper 改为对 `@babel/runtime` 的引用。
+
+<Callout type="warning" title="preset-env 不是万能药">
+`preset-env` 根据语法特性决定转译，但无法自动处理所有运行时 API。例如 `Promise.allSettled` 在某些旧版 Chrome 中不存在，`preset-env` 不会自动 polyfill，需要配合 `core-js` 或手动引入。
+</Callout>
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 转译后体积膨胀 | async/await 转译为 regenerator-runtime，增加数十 KB | 目标环境支持 Generator 时关闭转译；使用 `browserslist` 收紧目标范围 |
+| 全局 polyfill 冲突 | `core-js` 修改原生原型，与第三方库产生冲突 | 库开发使用 `@babel/runtime` + `transform-runtime`；应用开发使用 `usage` 模式 |
+| class 转译后的性能损耗 | 类的继承链被转译为 ES5 原型链，丢失引擎优化 | 现代浏览器直接输出 class，不转译 |
+| Source Map 配置遗漏 | 生产环境报错无法映射到原始源码 | 确保 Babel 和打包工具都开启 Source Map，但注意不将 Source Map 暴露到公网 |
+| 误用 Stage-x 提案 | 使用 Stage 1/2 提案后，提案语义发生重大变更或废弃 | 生产环境仅使用 Stage 4（已确定）特性；Stage 3 需评估风险 |
+
+## 测验
+
+<Quiz
+  question="ES6 之后，TC39 采用什么模式发布新版本？"
+  options={["多年一版，版本号递增", "每年一版，以年份命名", "按需发布，无固定周期", "每半年一版"]}
+  correctIndex={1}
+  explanation="从 ES2015（ES6）开始，TC39 改为每年发布一个版本，以年份命名，如 ES2016、ES2017 等。"
+/>
+
+<Quiz
+  question="Babel 的 @babel/preset-env 主要依据什么决定需要转译哪些语法特性？"
+  options={["package.json 中的 dependencies", "browserslist 配置的目标环境", "源代码中使用的 import 路径", "Webpack 的 entry 配置"]}
+  correctIndex={1}
+  explanation="@babel/preset-env 读取 browserslist 配置（来自 package.json 或 .browserslistrc），根据目标浏览器/Node 版本对语法特性的支持情况，按需加载转译插件。"
+/>

@@ -1,0 +1,216 @@
+---
+title: "11.4 Hooks 全解：useState、useEffect、useMemo、useCallback、useRef、useReducer"
+description: "useState、useEffect、useMemo、useCallback、useRef、useReducer"
+volume: "卷四：框架与状态管理"
+chapter: "第 11 章 React 原理与生态"
+section: "11.4"
+tags: ["Hooks", "useState", "useEffect", "useMemo"]
+difficulty: "基础"
+prerequisites: []
+related: ["11.3-lifecycle", "11.5-hooks-rules"]
+crossRefs: ["6.4-closure"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+Hooks 是 React 16.8 引入的 API，允许函数组件使用状态和其他 React 特性。Hooks 的设计不仅是为了简化 API，更是为了解耦状态逻辑与组件结构，使得状态逻辑可以被复用和组合。
+
+### useState
+
+`useState` 为函数组件引入状态。它接收初始状态值，返回当前状态和更新函数：
+
+```jsx
+const [count, setCount] = useState(0);
+```
+
+关键机制：
+
+- **状态不可变**：更新函数应传入新值，而非修改原值。
+- **函数式更新**：`setCount(prev => prev + 1)` 在异步更新场景中更安全。
+- **懒初始化**：`useState(() => expensiveComputation())` 避免每次渲染重复计算初始值。
+- **状态合并 vs 替换**：`useState` 替换对象（不自动合并），类组件的 `setState` 才合并。
+
+### useEffect
+
+`useEffect` 用于在组件渲染后执行副作用。它接收副作用函数和依赖数组：
+
+```jsx
+useEffect(() => {
+  // 副作用逻辑
+  return () => {
+    // 清理逻辑
+  };
+}, [dep1, dep2]);
+```
+
+依赖数组的语义：
+
+- **无依赖数组**：每次渲染后都执行。
+- **空数组 `[]`**：仅在挂载和卸载时执行。
+- **有依赖**：依赖变化时执行（先清理旧副作用，再执行新副作用）。
+
+React 18 的并发特性引入了"Effect 的清理和重新执行可能执行两次"的行为（严格模式开发环境下），以检测副作用是否正确实现了清理逻辑。
+
+### useMemo 与 useCallback
+
+两者都是性能优化工具，基于依赖数组缓存结果：
+
+- `useMemo(() => compute(a, b), [a, b])`：缓存计算值。
+- `useCallback(fn, [deps])`：缓存函数引用，等价于 `useMemo(() => fn, deps)`。
+
+<Callout type="warning" title="不要滥用 useMemo/useCallback">
+过度使用这两个 Hooks 会增加代码复杂度和内存开销。仅在以下场景使用：
+1. 计算成本极高（如大数据排序、复杂对象转换）。
+2. 缓存的对象/函数作为其他优化组件（React.memo）的 props。
+3. 作为依赖传入 useEffect 的复杂对象/函数。
+</Callout>
+
+### useRef
+
+`useRef` 返回一个可变的引用对象，其 `.current` 属性可以保存任何值，且变更不会触发重新渲染：
+
+```jsx
+const inputRef = useRef(null);
+// DOM 引用
+useEffect(() => { inputRef.current.focus(); }, []);
+
+// 保存上一次的值
+const prevValue = useRef(value);
+useEffect(() => { prevValue.current = value; });
+```
+
+`useRef` 与状态的核心区别：修改 `.current` 是同步的、不触发渲染的。
+
+### useReducer
+
+`useReducer` 是 `useState` 的替代方案，适合状态逻辑复杂或包含多个子值的情况：
+
+```jsx
+const [state, dispatch] = useReducer(reducer, initialState);
+```
+
+`useReducer` 的优势：
+
+- 将状态更新逻辑集中到 reducer 函数，便于测试。
+- 支持类似 Redux 的 action 模式。
+- 可传入懒初始化函数 `init(initialArg)`。
+
+```jsx
+function reducer(state, action) {
+  switch (action.type) {
+    case 'increment': return { count: state.count + 1 };
+    case 'decrement': return { count: state.count - 1 };
+    default: throw new Error();
+  }
+}
+```
+
+## 用法
+
+```jsx
+// useRef 保存定时器 ID
+function DebouncedInput({ onChange, delay }) {
+  const timeoutRef = useRef(null);
+
+  const handleChange = (e) => {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      onChange(e.target.value);
+    }, delay);
+  };
+
+  useEffect(() => {
+    return () => clearTimeout(timeoutRef.current);
+  }, []);
+
+  return <input onChange={handleChange} />;
+}
+
+// useReducer 管理表单状态
+function Form() {
+  const [state, dispatch] = useReducer(formReducer, { name: '', email: '', errors: {} });
+
+  return (
+    <form onSubmit={() => dispatch({ type: 'submit' })}>
+      <input
+        value={state.name}
+        onChange={e => dispatch({ type: 'field', field: 'name', value: e.target.value })}
+      />
+      {state.errors.name && <span>{state.errors.name}</span>}
+    </form>
+  );
+}
+```
+
+## 实践
+
+### 自定义 Hooks
+
+自定义 Hook 是以 `use` 开头的函数，可以调用其他 Hooks。它是复用状态逻辑的核心机制：
+
+```jsx
+function useLocalStorage(key, initialValue) {
+  const [stored, setStored] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(key)) ?? initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  const setValue = useCallback((value) => {
+    setStored(value);
+    window.localStorage.setItem(key, JSON.stringify(value));
+  }, [key]);
+
+  return [stored, setValue];
+}
+```
+
+### 避免 Stale Closure
+
+闭包陷阱是 Hooks 中最常见的 Bug 来源：
+
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      console.log(count); // 始终输出 0，因为闭包捕获了初始 count
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []); // 错误：遗漏 count 依赖
+
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+```
+
+修复方案：使用函数式更新或正确声明依赖。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| Stale Closure（过期闭包） | 回调中使用过时的 state/props | 使用函数式更新；正确声明依赖数组 |
+| useEffect 无限循环 | effect 中 setState 触发重新渲染，再次执行 effect | 检查依赖数组；使用条件判断避免不必要的 setState |
+| useRef 在 render 中读取 | 读取到的可能是旧值 | useRef 适合事件处理器和 effect 中读取，不适合 render 中参与 JSX 计算 |
+| useMemo 依赖引用不稳定 | 每次渲染都重新计算 | 确保依赖项是原始值或稳定引用 |
+| useState 对象未展开 | 更新时丢失其他字段 | 使用展开运算符 `{ ...state, field: newValue }` |
+
+## 测验
+
+<Quiz
+  question="useCallback 本质上是什么的语法糖？"
+  options={["useState", "useEffect", "useMemo", "useRef"]}
+  correctIndex={2}
+  explanation="useCallback(fn, deps) 等价于 useMemo(() => fn, deps)。两者都基于依赖数组缓存值，区别仅在于 useMemo 缓存任意计算值，useCallback 专门缓存函数引用。"
+/>
+
+<Quiz
+  question="以下代码有什么问题？`useEffect(() => { setCount(count + 1); }, []);`"
+  options={["语法错误", "无限循环", "count 始终为 1，因为闭包捕获了初始值", "没有依赖数组"]}
+  correctIndex={2}
+  explanation="空依赖数组意味着 effect 只在挂载时执行一次。此时 count 的闭包值为初始值 0，setCount(0 + 1) 后 count 变为 1，但 effect 不会再执行。若意图是定时增加，应使用 setCount(c => c + 1) 的函数式更新。"
+/>

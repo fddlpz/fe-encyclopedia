@@ -1,0 +1,312 @@
+---
+title: "21.4 字体优化：font-display / 子集化 / Variable Fonts"
+description: "深入解析 Web 字体加载机制、font-display 策略、字体子集化与可变字体的原理与实战优化"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 21 章 加载性能优化"
+section: "21.4"
+tags: ["font-display", "字体子集化", "Variable Fonts", "FOIT", "FOUT", "Web Font"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals", "21.1-resource-priority"]
+related: ["20.2-core-web-vitals", "21.1-resource-priority", "22.1-rendering-optimization"]
+crossRefs: ["20.2-core-web-vitals.mdx", "21.1-resource-priority.mdx", "22.1-rendering-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+Web 字体是品牌视觉一致性的关键，但也是性能优化的常见痛点。一个完整的 Web 字体文件（如中文字体）可能达到 5~20MB，即使经过压缩，下载和解析时间也足以严重拖慢首屏渲染。字体优化的核心挑战在于平衡**视觉正确性**（必须显示正确字体）和**渲染速度**（不能阻塞内容显示）。
+
+### 浏览器字体加载机制
+
+当浏览器解析到 `@font-face` 规则时，会经历以下状态机：
+
+1. **阻塞期（Block Period）**：字体尚未加载完成。浏览器使用不可见的回退字体（Invisible Fallback）渲染文本，文本存在但不可见（FOIT，Flash of Invisible Text）。此阶段的长度由 `font-display` 控制。
+2. **交换期（Swap Period）**：若字体在阻塞期未加载完成，浏览器使用回退字体（Fallback Font）渲染文本，文本可见但字体不对（FOUT，Flash of Unstyled Text）。当 Web 字体加载完成后，文本会"交换"为正确字体。
+3. **失败期（Failure Period）**：若字体在交换期内仍未加载完成，浏览器永久使用回退字体。
+
+**关键渲染路径上的字体阻塞：**
+
+浏览器在构建渲染树（Render Tree）时，需要知道每个文本节点的精确尺寸。若此时 Web 字体未加载完成，浏览器面临两个选择：
+- 等待字体加载（阻塞渲染，延长 FCP/LCP）
+- 使用回退字体计算布局（可能产生布局偏移，影响 CLS）
+
+`font-display` 就是控制这一权衡的开关。
+
+### font-display 的四种策略
+
+| 值 | 阻塞期 | 交换期 | 失败期 | 适用场景 |
+|----|--------|--------|--------|----------|
+| `auto` | 由浏览器决定（通常 ~3s） | 由浏览器决定 | 永久回退 | 不推荐，行为不一致 |
+| `block` | 3s | 无限 | 永久回退 | 品牌 Logo、图标字体（必须正确显示） |
+| `swap` | 0s | 无限 | 永久回退 | 正文文本（内容优先，允许 FOUT） |
+| `fallback` | 100ms | 3s | 永久回退 | 折中方案：短暂阻塞后交换 |
+| `optional` | 100ms | 0s | 永久回退 | 网络快则使用，慢则放弃（最佳性能） |
+
+**`font-display: optional` 的深度解析：**
+
+`optional` 是最具性能意识的策略。它在 100ms 内尝试加载字体，若成功则使用，若失败则永久使用回退字体。关键在于浏览器的**字体缓存策略**：若字体已在 HTTP 缓存（或预加载）中，`optional` 几乎总是成功；若需要网络请求，100ms 的窗口通常只够完成缓存查找，不足以完成网络往返。
+
+这意味着 `optional` + `preload` 是最佳组合：预加载确保字体在 100ms 内可用，`optional` 避免网络波动导致的布局偏移。
+
+### 字体子集化（Subsetting）
+
+字体文件包含大量字形（Glyph），但一个页面通常只使用其中很小一部分。子集化是提取页面实际使用的字形，生成精简字体文件的技术。
+
+**中文字体的子集化必要性：**
+
+- 完整中文字体（如思源黑体）：约 20,000+ 字形，文件大小 8~15MB
+- 常用字表（3500 常用汉字）：覆盖 95%+ 的现代中文文本
+- 单页面实际使用：通常 200~2000 个不同汉字
+
+**子集化技术：**
+
+1. **静态子集化**：构建时分析源码中的文字，生成只包含这些字形的字体文件。工具：`glyphhanger`、`subset-font`、`fonttools`。
+2. **动态子集化**：服务器根据请求内容实时生成子集。Google Fonts 使用此策略，通过 `text=` 参数指定需要的字符。
+3. **分片子集化**：将字体按 Unicode 范围（如基本拉丁、CJK 统一表意文字）拆分为多个文件，浏览器按需下载。
+
+### Variable Fonts（可变字体）
+
+Variable Fonts 是 OpenType 1.8 规范引入的技术，将多个字重（Weight）、字宽（Width）、倾斜（Slant）等变体合并为单个字体文件，通过 CSS 变量实时插值生成任意中间状态。
+
+**技术原理：**
+
+传统字体为每个字重（Light、Regular、Bold）提供独立文件。Variable Font 在字体内部定义**设计空间（Design Space）**和**插值轴（Axes）**，如 `wght`（字重，100~900）、`wdth`（字宽，75~100）。渲染时，字形轮廓根据轴值进行数学插值，生成精确的中间形态。
+
+**体积优势：**
+
+| 方案 | 文件数 | 总体积（拉丁） | 总体积（CJK） |
+|------|--------|---------------|---------------|
+| 传统字体（5 个字重） | 5 | ~250KB | ~50MB |
+| Variable Font | 1 | ~150KB | ~10MB |
+
+对于拉丁字体，Variable Font 通常更优。但对于 CJK 字体，单文件体积仍然巨大，需结合子集化使用。
+
+## 用法
+
+### 完整的字体加载优化配置
+
+```html
+<!-- 1. 预连接 Google Fonts 域名 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<!-- 2. 使用 display=swap 参数（Google Fonts 支持） -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- 3. 预加载关键字体文件（Google Fonts 的实际字体 URL 需从网络面板获取） -->
+<link rel="preload" href="https://fonts.gstatic.com/s/inter/v12/...woff2" as="font" type="font/woff2" crossorigin>
+
+<style>
+  @font-face {
+    font-family: 'Inter';
+    src: url('/fonts/Inter-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: optional; /* 或 swap */
+  }
+
+  @font-face {
+    font-family: 'Inter';
+    src: url('/fonts/Inter-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: optional;
+  }
+
+  /* 系统字体回退栈：确保回退字体与 Web 字体尺寸接近，减少 CLS */
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+</style>
+```
+
+### 使用 glyphhanger 进行字体子集化
+
+```bash
+# 安装 glyphhanger
+npm install -g glyphhanger
+
+# 分析页面使用的字符并生成子集
+# --subset 指定源字体文件
+# --formats 指定输出格式
+# --output 指定输出目录
+glyphhanger https://example.com \
+  --subset=./fonts/NotoSansSC-Regular.otf \
+  --formats=woff2 \
+  --output=./fonts/subset/
+
+# 仅提取指定文本的子集
+glyphhanger --string="前端性能优化百科全书" \
+  --subset=./fonts/NotoSansSC-Regular.otf \
+  --formats=woff2 \
+  --output=./fonts/subset/
+```
+
+```javascript
+// 构建时自动子集化（Node.js 脚本）
+const subsetFont = require('subset-font');
+const fs = require('fs');
+
+async function subsetChineseFont() {
+  const fontBuffer = fs.readFileSync('./fonts/NotoSansSC-Regular.otf');
+
+  // 从源码中提取所有中文字符
+  const sourceFiles = ['./src/**/*.js', './src/**/*.vue', './src/**/*.md'];
+  const allText = sourceFiles
+    .flatMap(glob => /* 读取文件 */)
+    .join('');
+
+  // 提取唯一字符
+  const uniqueChars = [...new Set(allText.match(/[一-鿿]/g) || [])].join('');
+
+  const subsetBuffer = await subsetFont(fontBuffer, uniqueChars, {
+    targetFormat: 'woff2',
+  });
+
+  fs.writeFileSync('./public/fonts/noto-sans-sc-subset.woff2', subsetBuffer);
+  console.log(`子集化完成：${uniqueChars.length} 个字符，体积 ${(subsetBuffer.length / 1024).toFixed(1)}KB`);
+}
+
+subsetChineseFont();
+```
+
+### 使用 Unicode Range 分片加载
+
+```css
+/* 将字体按 Unicode 范围分片，浏览器按需下载 */
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-0.woff2') format('woff2');
+  unicode-range: U+4e00-62ff; /* CJK 第一部分 */
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-1.woff2') format('woff2');
+  unicode-range: U+6300-77ff; /* CJK 第二部分 */
+}
+
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-2.woff2') format('woff2');
+  unicode-range: U+7800-8cff; /* CJK 第三部分 */
+}
+
+/* 拉丁字符 */
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/noto-sans-sc-latin.woff2') format('woff2');
+  unicode-range: U+0000-00ff, U+0131, U+0152-0153, U+02bb-02bc, U+02c6, U+02da, U+02dc, U+2000-206f;
+}
+```
+
+### Variable Fonts 的 CSS 使用
+
+```css
+/* 加载可变字体 */
+@font-face {
+  font-family: 'Inter Variable';
+  src: url('/fonts/Inter-Variable.woff2') format('woff2-variations');
+  font-weight: 100 900; /* 声明支持的字重范围 */
+  font-display: swap;
+}
+
+/* 使用任意中间字重 */
+.thin { font-weight: 250; }
+.regular { font-weight: 450; }
+.semibold { font-weight: 600; }
+.bold { font-weight: 750; }
+
+/* 可变字体的其他轴 */
+.condensed {
+  font-variation-settings: 'wght' 400, 'wdth' 75;
+}
+
+.expanded {
+  font-variation-settings: 'wght' 400, 'wdth' 125;
+}
+```
+
+## 实践
+
+### 案例：中文站点的字体优化
+
+某中文内容站使用思源黑体（Noto Sans SC），完整字体 9.8MB。首屏文字渲染延迟严重，FCP 后 3s 才显示正文。
+
+**优化方案：**
+
+| 步骤 | 措施 | 效果 |
+|------|------|------|
+| 子集化 | 提取页面实际使用的 1200 个汉字 | 字体文件 9.8MB -> 180KB |
+| font-display | `auto` -> `optional` | 消除 FOIT 导致的 FCP 延迟 |
+| 预加载 | 添加 `preload` 关键字体 | 字体在 100ms 内可用，`optional` 成功应用 |
+| 回退字体优化 | 调整 `font-family` 回退栈 | 回退字体与思源黑体 x-height 接近，FOUT 不明显 |
+| unicode-range | 按页面分片（首页/文章页/关于页） | 每页只下载实际需要的 50~80KB 子集 |
+
+**结果：**
+- 首屏字体加载：9.8MB -> 80KB
+- FCP：2.1s -> 0.8s
+- 字体导致的 CLS：0.08 -> 0.01
+
+### font-display 策略选择矩阵
+
+| 场景 | 推荐策略 | 原因 |
+|------|----------|------|
+| 品牌 Logo/标题 | `block` | 必须使用正确字体，短暂不可接受 |
+| 正文内容 | `optional` + preload | 内容优先，预加载确保成功率 |
+| 图标字体（Font Awesome） | `block` 或 `swap` | 图标显示为方框比显示为文字更糟 |
+| 装饰性文字 | `optional` | 不显示也比错误显示好 |
+| 弱网环境优先 | `optional` | 避免网络阻塞导致的长时间 FOIT |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 无 font-display | 使用浏览器默认策略（通常 3s FOIT） | 文本在 3s 内不可见，FCP/LCP 严重延迟 |
+| 忽略回退字体尺寸差异 | Web 字体与回退字体（如 Arial -> Inter）的 x-height、字宽差异大 | 字体交换时产生显著布局偏移（CLS） |
+| 预加载错误 URL | `preload` 的字体 URL 与 `@font-face` 中定义的不一致 | 双重下载，预加载的资源被废弃 |
+| 子集化遗漏字符 | 构建时未包含动态生成的文本（如用户昵称、API 返回内容） | 子集字体中缺少字符，显示为 tofu（方框） |
+| Variable Font 的 IE 兼容 | Variable Font 不支持 IE11 | 需提供静态字体回退 |
+| 同时加载过多字重 | 加载 Light/Regular/Medium/Bold/Heavy 5 个字重 | 总字体体积巨大，考虑使用 Variable Font |
+| 忽略字体格式优先级 | 优先提供 TTF/OTF 而非 WOFF2 | WOFF2 比 TTF 体积小 30%+，应优先提供 |
+
+<Callout type="warning" title="font-display: swap 的 CLS 风险"
+>
+`swap` 虽然消除了 FOIT，但会导致 FOUT（无样式文本闪烁）。若 Web 字体与回退字体的 metrics（尤其是 x-height 和 advance width）差异较大，字体交换时会触发明显的布局偏移，严重影响 CLS。建议使用 `font-display: optional` + `preload` 的组合，或调整回退字体栈使其 metrics 尽可能接近 Web 字体。Facebook 的 `font-display: optional` 实践表明，在字体预加载的情况下，optional 策略可以提供最佳的用户体验。
+</Callout>
+
+<Quiz
+  question="`font-display: optional` 的核心行为是什么？"
+  options={[
+    "永远等待字体加载完成，无论多久",
+    "在 100ms 内尝试加载字体，成功则使用，失败则永久使用回退字体",
+    "立即使用回退字体，字体加载完成后永不交换",
+    "在 3s 内阻塞渲染，之后使用回退字体"
+  ]}
+  correctIndex={1}
+  explanation="optional 策略的阻塞期为 100ms，交换期为 0ms。这意味着浏览器只给字体 100ms 的时间窗口（通常只够从缓存读取），若字体未就绪则永久使用回退字体。配合 preload 使用时，预加载的字体通常能在 100ms 内就绪，从而实现既快又准的字体渲染。"
+/>
+
+<Quiz
+  question="为什么中文字体特别需要子集化（Subsetting）优化？"
+  options={[
+    "中文字体文件格式效率低",
+    "中文字体包含数万个字形，但单个页面通常只使用其中很小一部分，子集化可大幅减小文件体积",
+    "浏览器对中文字体的渲染速度慢",
+    "中文字体不支持压缩"
+  ]}
+  correctIndex={1}
+  explanation="中文字体（如思源黑体）包含约 20,000+ 个字形，完整文件可达 8~15MB。但典型网页只使用数百到数千个不同汉字。子集化通过提取页面实际需要的字形，可将字体文件缩小到几十到几百 KB，是从根本上解决中文字体性能问题的关键手段。"
+/>

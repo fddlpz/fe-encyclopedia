@@ -1,0 +1,156 @@
+---
+title: "6.11 正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义"
+description: "模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.11"
+tags: ["正则", "RegExp", "模式匹配", "断言"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.10-error-handling", "6.12-intl"]
+crossRefs: []
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+正则表达式（Regular Expression）是一种描述字符串模式的声明式语言。JavaScript 的正则引擎基于 NFA（非确定有限自动机）回溯实现，支持大部分 PCRE 特性，并在 ES2018 后大幅增强了 Unicode 支持。
+
+### RegExp 的创建与标志
+
+正则可通过字面量 `/pattern/flags` 或 `new RegExp('pattern', 'flags')` 创建。后者支持动态构建模式，但需要对反斜杠进行双重转义。
+
+标志（Flags）：
+
+- `g`（global）：全局匹配，找到所有匹配而非第一个。
+- `i`（ignoreCase）：忽略大小写。
+- `m`（multiline）：`^` 和 `$` 匹配每行的开头和结尾。
+- `s`（dotAll，ES2018）：`.` 匹配包括换行符在内的所有字符。
+- `u`（unicode，ES2015）：启用 Unicode 模式，正确处理码点大于 `￿` 的字符。
+- `y`（sticky，ES2015）：粘性匹配，从 `lastIndex` 开始严格匹配。
+- `d`（hasIndices，ES2022）：匹配结果包含每个捕获组的起始/结束索引数组。
+
+### 捕获组与反向引用
+
+圆括号 `(...)` 创建捕获组，匹配结果存储在 `RegExp.$1`、`$2` 或结果数组中。非捕获组 `(?:...)` 仅用于分组，不保存匹配内容。
+
+命名捕获组（ES2018）：`(?<name>...)`，通过 `match.groups.name` 访问。
+
+```js
+const re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+const result = re.exec('2024-03-15');
+console.log(result.groups.year); // '2024'
+```
+
+### 先行断言与后行断言
+
+断言（Assertion）匹配位置而非字符，不消耗输入字符串。
+
+- **正向先行断言**：`x(?=y)`，匹配后面跟着 `y` 的 `x`。
+- **负向先行断言**：`x(?!y)`，匹配后面不跟着 `y` 的 `x`。
+- **正向后行断言**（ES2018）：`(?<=y)x`，匹配前面有 `y` 的 `x`。
+- **负向后行断言**（ES2018）：`(?<!y)x`，匹配前面没有 `y` 的 `x`。
+
+```js
+// 匹配价格数字（前面有 $ 符号）
+const prices = 'Apple $1.50, Banana $0.80';
+const priceRe = /(?<=\$)\d+\.\d+/g;
+prices.match(priceRe); // ['1.50', '0.80']
+```
+
+### matchAll 与迭代器
+
+`String.prototype.matchAll`（ES2020）返回一个迭代器，产出所有匹配结果（包括捕获组信息），避免了 `match` 在全局模式下丢失捕获组的问题。
+
+```js
+const str = 'test1 test2';
+const re = /t(e)(st(\d?))/g;
+
+// match 在 g 模式下返回 ['test1', 'test2']，丢失捕获组
+// matchAll 保留所有信息
+for (const match of str.matchAll(re)) {
+  console.log(match[0], match[1], match[2], match[3]);
+}
+```
+
+### Unicode 属性转义（ES2018）
+
+在 `u` 标志下，可使用 `\p{Property}` 和 `\P{Property}` 匹配 Unicode 字符属性：
+
+```js
+const emojiRe = /\p{Emoji}/gu;
+'Hello 👋 World 🌍'.match(emojiRe); // ['👋', '🌍']
+
+// 匹配所有中文字符
+const chineseRe = /\p{Script=Han}/gu;
+'中文123'.match(chineseRe); // ['中', '文']
+```
+
+## 用法
+
+```js
+// 使用命名捕获组进行 URL 解析
+const urlRe = /^(?<protocol>https?):\/\/(?<host>[^\/]+)(?<path>.*)$/;
+const { groups } = urlRe.exec('https://example.com/path?query=1');
+// groups: { protocol: 'https', host: 'example.com', path: '/path?query=1' }
+
+// 使用 matchAll 提取所有代码块
+const markdown = '```js\nconst x = 1;\n```\n```py\nx = 1\n```';
+const codeRe = /```(?<lang>\w+)\n(?<code>[\s\S]*?)\n```/g;
+const blocks = [...markdown.matchAll(codeRe)];
+blocks.forEach(([_, lang, code]) => console.log(lang, code));
+
+// 安全的用户名校验（允许字母、数字、下划线、连字符）
+const usernameRe = /^[a-zA-Z0-9_-]{3,20}$/;
+```
+
+## 实践
+
+### 正则性能优化
+
+正则引擎使用回溯算法，某些模式会导致灾难性回溯（Catastrophic Backtracking）：
+
+```js
+// 危险：嵌套量词 + 模糊匹配
+const badRe = /(a+)+b/;
+badRe.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac'); // 极慢，指数级回溯
+```
+
+优化策略：
+
+- 使用具体字符类替代 `.`。
+- 避免嵌套量词（如 `(a+)+`）。
+- 使用占有量词（某些引擎支持）或原子组（JavaScript 不支持，需模拟）。
+- 对长字符串匹配设置超时或长度限制。
+
+### 正则的测试与调试
+
+- 使用 regex101.com、regexr.com 等在线工具可视化匹配过程。
+- 在 Node.js 中使用 `console.time` 测量正则执行时间。
+- 对复杂正则添加注释（`new RegExp` 配合字符串拼接）。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 全局标志与 exec 的 lastIndex | 重复调用 exec 可能从意外位置开始 | 每次使用新的 RegExp 实例；或在循环中注意 lastIndex |
+| match 在 g 模式下丢失捕获组 | 结果仅为字符串数组 | 使用 matchAll 或多次 exec |
+| 点号不匹配换行 | 多行文本匹配失败 | 使用 `[\s\S]` 或启用 s（dotAll）标志 |
+| Unicode 字符被拆分为代理对 | `u` 标志未启用时，😀 被视为两个字符 | 始终对含 Unicode 的正则启用 `u` 标志 |
+| 正则对象的 test 修改 lastIndex | `g` 标志下 test 也推进 lastIndex | 非循环场景避免对同一正则实例混用 test/match/exec |
+
+## 测验
+
+<Quiz
+  question="`String.prototype.match` 在全局模式（g）下与 `matchAll` 的主要区别是什么？"
+  options={["match 更快", "match 丢失捕获组信息，matchAll 保留", "matchAll 不支持全局模式", "没有区别"]}
+  correctIndex={1}
+  explanation="match 在全局模式下返回所有匹配的字符串数组，但不包含捕获组信息。matchAll 返回迭代器，每个迭代结果都包含完整的匹配信息和所有捕获组。"
+/>
+
+<Quiz
+  question="后行断言 `(?<=\$)\d+` 需要什么条件才能在 JavaScript 中使用？"
+  options={["仅需要 m 标志", "需要 ES2018 支持，通常配合 u 标志", "需要 y 标志", "JavaScript 不支持后行断言"]}
+  correctIndex={1}
+  explanation="正向后行断言 (?<=...) 和负向后行断言 (?<!...) 是 ES2018 引入的特性。在处理 Unicode 内容时，通常建议同时启用 u 标志以确保正确性。"
+/>

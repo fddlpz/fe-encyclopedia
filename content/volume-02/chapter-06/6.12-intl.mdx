@@ -1,0 +1,182 @@
+---
+title: "6.12 国际化（Intl）：DateTimeFormat、NumberFormat、RelativeTimeFormat、Segmenter"
+description: "DateTimeFormat、NumberFormat、RelativeTimeFormat、Segmenter"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.12"
+tags: ["Intl", "国际化", "i18n", "本地化"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.11-regex", "6.13-new-syntax"]
+crossRefs: []
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+`Intl` 对象是 ECMAScript 国际化 API（ECMA-402）的命名空间，提供语言敏感的字符串比较、数字格式化、日期时间格式化等功能。与手动拼接字符串不同，Intl API 基于 Unicode CLDR（Common Locale Data Repository）数据，能够处理各地区的复杂规则。
+
+### Intl.DateTimeFormat
+
+日期时间格式化支持丰富的选项：
+
+```js
+const dtf = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  weekday: 'long',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Asia/Shanghai'
+});
+dtf.format(new Date()); // '2024年3月15日星期五 14:30'
+```
+
+关键选项：
+
+- `dateStyle` / `timeStyle`：`full`、`long`、`medium`、`short` 的预设组合（ES2020）。
+- `timeZone`：IANA 时区名，如 `UTC`、`America/New_York`。
+- `hour12`：12 小时制或 24 小时制。
+- `calendar`：历法系统，如 `chinese`、`japanese`。
+
+### Intl.NumberFormat
+
+数字格式化支持货币、百分比、单位、记数系统等：
+
+```js
+const nf = new Intl.NumberFormat('zh-CN', {
+  style: 'currency',
+  currency: 'CNY',
+  minimumFractionDigits: 2
+});
+nf.format(1234567.89); // '¥1,234,567.89'
+
+// 紧凑记数法
+new Intl.NumberFormat('en', { notation: 'compact' }).format(1234567); // '1.2M'
+```
+
+ES2021 引入的 `signDisplay` 选项可控制正负号的显示策略（`auto`、`always`、`exceptZero`、`never`）。
+
+### Intl.RelativeTimeFormat
+
+相对时间格式化（ES2020），输出"3天前"、"in 2 hours"等：
+
+```js
+const rtf = new Intl.RelativeTimeFormat('zh', { numeric: 'auto' });
+rtf.format(-3, 'day');  // '3天前'
+rtf.format(1, 'month'); // '下个月'
+```
+
+支持的单位：`year`、`quarter`、`month`、`week`、`day`、`hour`、`minute`、`second`。
+
+### Intl.ListFormat
+
+列表格式化（ES2020），处理并列项的连词：
+
+```js
+const lf = new Intl.ListFormat('zh', { type: 'conjunction' });
+lf.format(['苹果', '香蕉', '橙子']); // '苹果、香蕉和橙子'
+```
+
+### Intl.Segmenter
+
+文本分段（ES2022），按粒度（字素、词、句）对字符串进行迭代：
+
+```js
+const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
+const segments = [...segmenter.segment('你好世界')];
+// [{ segment: '你好', index: 0, isWordLike: true }, { segment: '世界', index: 2, isWordLike: true }]
+```
+
+### Intl.Collator
+
+区域敏感的字符串比较，处理排序规则：
+
+```js
+const collator = new Intl.Collator('de', { sensitivity: 'base' });
+['ä', 'a', 'z'].sort(collator.compare); // 德语中 ä 排在 a 之后
+```
+
+## 用法
+
+```js
+// 封装多语言格式化工具
+const createFormatters = (locale) => ({
+  date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }),
+  time: new Intl.DateTimeFormat(locale, { timeStyle: 'short' }),
+  number: new Intl.NumberFormat(locale),
+  currency: (currency) => new Intl.NumberFormat(locale, { style: 'currency', currency }),
+  relative: new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+});
+
+const zh = createFormatters('zh-CN');
+zh.date.format(new Date()); // '2024年3月15日'
+zh.currency('USD').format(99.9); // 'US$99.90'
+
+// 动态切换时区显示
+function formatInTimeZone(date, timeZone, locale = 'zh-CN') {
+  return new Intl.DateTimeFormat(locale, {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).format(date);
+}
+```
+
+## 实践
+
+### 服务端渲染与 Hydration
+
+Intl API 依赖运行时的区域数据，服务端和客户端必须使用相同的 `locale` 和选项，否则 SSR 和客户端 Hydration 结果不一致会导致 React 等框架报错。建议将用户的区域偏好存储在 cookie 或 URL 中，服务端据此初始化 Intl 对象。
+
+### 性能优化
+
+`Intl.*Format` 对象的创建有一定开销，在热点代码中应复用实例：
+
+```js
+// 不好：每次渲染都创建新实例
+function Price({ value }) {
+  return new Intl.NumberFormat('zh', { style: 'currency', currency: 'CNY' }).format(value);
+}
+
+// 好：复用实例
+const currencyFormatter = new Intl.NumberFormat('zh', { style: 'currency', currency: 'CNY' });
+function Price({ value }) {
+  return currencyFormatter.format(value);
+}
+```
+
+### Polyfill 策略
+
+旧版浏览器（如 IE11）不支持 Intl API，需引入 polyfill：
+
+- `@formatjs/intl` 提供完整的 Intl  polyfill 套件。
+- 按需加载：仅引入目标浏览器缺失的 locale 数据。
+- 现代项目若无需支持 IE11，可直接使用原生 Intl。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 时区数据不完整 | 某些 IANA 时区不被支持或数据过时 | 更新运行时环境；使用 `Intl.DateTimeFormat.supportedLocalesOf` 检测 |
+| SSR 与客户端 locale 不一致 | Hydration 不匹配 | 统一从请求头/cookie 获取 locale，传递给客户端 |
+| 货币代码错误 | `currency: 'RMB'` 无效，应为 'CNY' | 使用 ISO 4217 标准货币代码 |
+| 紧凑数字的精度 | `notation: 'compact'` 结果因 locale 差异大 | 明确指定 `compactDisplay: 'short'` 或 `'long'` |
+| Segmenter 兼容性 | 旧版浏览器不支持 | 使用 `@formatjs/intl-segmenter` polyfill |
+
+## 测验
+
+<Quiz
+  question="`Intl.RelativeTimeFormat` 的 `numeric: 'auto'` 选项有什么效果？"
+  options={["只输出数字", "尽可能使用自然语言（如'昨天'代替'1天前'）", "自动省略零值", "使用科学计数法"]}
+  correctIndex={1}
+  explanation="numeric: 'auto' 允许格式化器在可能的情况下使用自然语言形式，如将 -1 day 格式化为 '昨天'（取决于 locale），而不是 '1天前'。"
+/>
+
+<Quiz
+  question="`Intl.NumberFormat` 中 `notation: 'compact'` 的作用是什么？"
+  options={["四舍五入到整数", "使用紧凑记数法（如 1.2M）", "禁用千分位分隔符", "使用科学计数法"]}
+  correctIndex={1}
+  explanation="notation: 'compact' 使用当前 locale 的紧凑记数法，如英语中的 1.2M、中文中的 123万，以较短形式展示大数字。"
+/>

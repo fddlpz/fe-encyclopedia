@@ -1,0 +1,189 @@
+---
+title: "6.10 错误处理：try/catch/finally、Error 类型、自定义错误类、错误监控与 Source Map"
+description: "try/catch/finally、Error 类型、自定义错误类、错误监控与 Source Map"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.10"
+tags: ["错误处理", "try/catch", "Source Map", "监控"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.7-async", "6.9-proxy-reflect"]
+crossRefs: []
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 的错误处理机制基于异常（Exception）模型。当运行时错误发生时，引擎会创建一个 Error 对象并沿调用栈向上抛出，直到被 `try/catch` 捕获或导致程序终止。
+
+### Error 类型体系
+
+ECMAScript 规范定义了以下内置 Error 构造函数：
+
+- **Error**：所有错误类型的基类，包含 `name`、`message`、`stack`（非标准但所有引擎实现）属性。
+- **SyntaxError**：解析时语法错误。
+- **ReferenceError**：引用不存在的变量。
+- **TypeError**：操作数类型不符合预期（如 `null.foo`）。
+- **RangeError**：数值超出允许范围（如 `new Array(-1)`）。
+- **URIError**：URI 编码/解码错误（`encodeURI`、`decodeURI`）。
+- **EvalError**：`eval()` 使用错误（现代引擎不再抛出）。
+- **AggregateError**（ES2021）：包装多个错误的集合（如 `Promise.any` 全部拒绝时）。
+
+### try/catch/finally 的执行语义
+
+- `try` 块中的代码正常执行，若抛出异常则跳转到 `catch`。
+- `catch` 捕获异常后执行，捕获的异常值绑定到 `catch` 参数（ES2019 起支持可选绑定 `catch { ... }`）。
+- `finally` 块无论是否发生异常都会执行。若 `try` 或 `catch` 中有 `return`，`finally` 会在返回前执行。
+- 若 `finally` 块中抛出异常或执行 `return`，会覆盖 `try`/`catch` 中的返回值或异常。
+
+```js
+function demo() {
+  try {
+    return 1;
+  } finally {
+    return 2; // 覆盖 try 中的 return 1
+  }
+}
+demo(); // 2
+```
+
+### 自定义错误类
+
+通过继承 `Error` 可以创建语义化的自定义错误：
+
+```js
+class ValidationError extends Error {
+  constructor(field, message) {
+    super(message);
+    this.name = 'ValidationError';
+    this.field = field;
+    // 修复原型链（Babel 转译可能需要）
+    Object.setPrototypeOf(this, ValidationError.prototype);
+  }
+}
+```
+
+自定义错误类的优势在于：
+
+- 可通过 `instanceof` 精确识别错误类型。
+- 可附加结构化元数据（如错误码、字段名、请求 ID）。
+- 便于错误监控系统的分类和聚合。
+
+### Source Map 原理
+
+Source Map 是映射压缩/转译后代码与原始源码位置关系的 JSON 格式文件（版本 3）。其 `mappings` 字段使用 VLQ（Variable Length Quantity）编码，将生成文件的行列号映射到原始文件的源文件索引、行列号及名称索引。
+
+关键字段：
+
+- `sources`：原始源文件列表。
+- `names`：原始代码中的标识符列表。
+- `mappings`：Base64 VLQ 编码的映射序列。
+- `sourcesContent`：可选，内联原始源码内容。
+
+生产环境中应上传 Source Map 到错误监控平台（如 Sentry），但不应将其暴露到公网，以防源码泄露。
+
+### 全局错误捕获
+
+浏览器环境提供多个全局错误捕获入口：
+
+- `window.onerror`：捕获同步运行时错误和未捕获的异常。
+- `window.addEventListener('error', ...)`：捕获资源加载错误（如图片 404）。
+- `window.addEventListener('unhandledrejection', ...)`：捕获未处理的 Promise 拒绝。
+- `window.addEventListener('rejectionhandled', ...)`：捕获之前未处理但后来被处理的 Promise 拒绝。
+
+Node.js 中对应 `process.on('uncaughtException')` 和 `process.on('unhandledRejection')`。
+
+<Callout type="warning" title="不要静默吞掉错误">
+空的 catch 块是工程中常见的反模式：`try { ... } catch(e) { }`。这会掩盖真正的 Bug，使得问题难以排查。至少应记录错误日志，或重新抛出更具体的错误。
+</Callout>
+
+## 用法
+
+```js
+// 异步错误处理
+async function fetchData() {
+  try {
+    const res = await fetch('/api');
+    if (!res.ok) {
+      throw new HttpError(res.status, `HTTP ${res.status}`);
+    }
+    return await res.json();
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 404) {
+      return null; // 降级处理
+    }
+    throw err; // 其他错误继续上抛
+  }
+}
+
+// 全局错误监控
+window.addEventListener('error', (event) => {
+  reportError({
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    stack: event.error?.stack
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  reportError({
+    type: 'unhandledrejection',
+    reason: event.reason?.stack || String(event.reason)
+  });
+  event.preventDefault(); // 防止控制台报错
+});
+```
+
+## 实践
+
+### 错误边界（Error Boundary）
+
+React 的错误边界是类组件中实现的 `componentDidCatch` 或 `static getDerivedStateFromError`，用于捕获子组件树中的 JavaScript 错误，防止整个应用崩溃。函数组件目前没有等效机制（React 19 的 `use` API 和 Error Boundaries 配合可部分解决）。
+
+### 错误码体系设计
+
+大型应用中应建立结构化的错误码体系：
+
+```js
+const ErrorCodes = {
+  AUTH_TOKEN_EXPIRED: { code: 'A001', status: 401 },
+  VALIDATION_REQUIRED: { code: 'V001', status: 400 },
+  NETWORK_TIMEOUT: { code: 'N001', status: 0 }
+};
+```
+
+错误码便于前端做精确的降级处理、国际化提示和后端日志关联。
+
+### Source Map 安全
+
+- 构建时生成 Source Map，但文件名添加隐藏前缀（如 `//# sourceMappingURL=hidden.map`）。
+- 通过 Sentry 等平台的 `sentry-cli` 上传 Source Map，上传后删除构建产物中的 map 文件。
+- 使用 Nginx 等反向代理限制 `.map` 文件的访问权限（如仅内网 IP 可访问）。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| try/catch 无法捕获异步异常 | `setTimeout` 中抛出的错误无法被外部 try/catch 捕获 | 异步代码使用 Promise 和 async/await 的 try/catch |
+| JSON.parse 的错误信息不友好 | 仅提示 "Unexpected token"，无具体位置 | 使用更健壮的解析库，或包装为带上下文的错误 |
+| 自定义错误丢失 stack | Babel 转译后自定义错误的 stack 指向错误基类 | 在构造函数中调用 `Error.captureStackTrace(this, this.constructor)`（V8） |
+| 全局 onerror 返回 true | 返回 true 会阻止默认处理（控制台不报错） | 确保在监控上报完成后再返回 true |
+| Source Map 路径错误 | 浏览器无法加载 Source Map，报错位置为编译后代码 | 检查 `sourceMappingURL` 的路径和部署位置 |
+
+## 测验
+
+<Quiz
+  question="`finally` 块中的 `return` 会覆盖 `try` 块中的 `return` 吗？"
+  options={["不会", "会", "取决于是否发生异常", "抛出 SyntaxError"]}
+  correctIndex={1}
+  explanation="finally 块中的 return 会覆盖 try 或 catch 块中的 return 值。如果 finally 中抛出异常，也会覆盖 try/catch 中的异常或返回值。"
+/>
+
+<Quiz
+  question="Promise 中未处理的 rejection 在浏览器中通过什么事件捕获？"
+  options={["window.onerror", "unhandledrejection", "error 事件", "catch 块"]}
+  correctIndex={1}
+  explanation="浏览器中未处理的 Promise rejection 会触发 window 上的 'unhandledrejection' 事件。window.onerror 无法捕获 Promise 中的异步错误。"
+/>

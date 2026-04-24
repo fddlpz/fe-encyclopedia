@@ -1,0 +1,262 @@
+---
+title: "1.3 内存管理：虚拟内存、分页与分段、栈与堆、V8 的堆结构"
+description: "深入剖析操作系统内存管理机制，包括虚拟内存、分页与分段、栈与堆的区别，以及 V8 引擎的堆内存布局与垃圾回收策略。"
+volume: "卷一：计算机科学与网络基础"
+chapter: "第 1 章 计算机系统基础"
+section: "1.3"
+tags: ["内存管理", "虚拟内存", "堆栈", "V8", "垃圾回收", "分页", "分段", "内存泄漏", "GC"]
+difficulty: "基础"
+prerequisites: []
+related:
+  - { title: "1.2 CPU 架构与缓存层次", slug: "volume-01/chapter-01/1.2-cpu-cache" }
+  - { title: "1.4 进程与线程：进程间通信（IPC）、线程同步、Web Worker", slug: "volume-01/chapter-01/1.4-process-thread" }
+crossRefs:
+  - { title: "JavaScript 内存泄漏排查", slug: "volume-02/chapter-04/4.5-memory-leak" }
+  - { title: "V8 引擎原理", slug: "volume-02/chapter-04/4.1-v8-engine" }
+  - { title: "WebAssembly 线性内存", slug: "volume-02/chapter-05/5.4-wasm-memory" }
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+### 物理内存的局限与虚拟内存的诞生
+
+早期的操作系统中，程序直接运行在**物理内存**上，程序员需要手动管理内存地址的分配与回收。这种方式存在三个致命缺陷：
+1.  **内存碎片**：随着程序的加载与卸载，物理内存中会出现大量无法被利用的零散空闲块（外部碎片）。
+2.  **地址冲突**：多个程序可能试图使用相同的物理地址，导致相互覆盖。
+3.  **缺乏隔离**：一个程序的错误写入可能破坏操作系统或其他进程的数据，导致整个系统崩溃。
+
+**虚拟内存（Virtual Memory）** 机制彻底解决了这些问题。它为每个进程提供了一个独立的、连续的、巨大的地址空间假象（在 64 位系统上可达 $2^{64}$ 字节），而实际的物理内存分配被推迟到真正访问时，并由操作系统统一协调。虚拟内存的核心价值在于**隔离性、安全性和灵活性**。
+
+### 分页（Paging）：现代操作系统的主流方案
+
+分页是虚拟内存最主流的实现技术。它将虚拟地址空间和物理内存都划分为固定大小的块，分别称为**页（Page，通常为 4KB）** 和**页框（Page Frame）**。虚拟地址到物理地址的转换由 CPU 中的 **MMU（Memory Management Unit，内存管理单元）** 通过查询**页表（Page Table）** 完成。
+
+页表是一个多级哈希结构，存储了虚拟页号（VPN）到物理页框号（PFN）的映射关系，以及访问权限位（读/写/执行）和存在位（Present Bit）。如果程序访问了一个未映射的虚拟地址，或违反了权限（如向只读页写入），MMU 会触发一个 **Page Fault（缺页中断）**，将控制权交给操作系统内核处理。
+
+为了加速地址转换，CPU 内置了 **TLB（Translation Lookaside Buffer）**，它是一个高速缓存，专门缓存最近使用过的页表项。TLB 的命中率对程序性能至关重要，一次 TLB 未命中可能需要访问多级页表，带来数十个时钟周期的开销。
+
+### 分段（Segmentation）：逻辑单元的隔离
+
+与分页的“固定大小切分”不同，**分段（Segmentation）** 按照程序的逻辑结构（代码段、数据段、堆、栈等）将地址空间划分为长度不等的段。每个段有独立的基地址和界限（长度），段内地址连续，段与段之间可以不连续。
+
+分段提供了更好的逻辑隔离和权限控制（例如代码段可设为只读和执行），但容易产生外部碎片。现代 x86-64 架构的操作系统（如 Linux）主要采用分页机制，分段已被弱化（仅在少数场景如 TLS 中使用），而 Intel 的 x86-32 架构历史上则采用段页式结合的方案。
+
+### 栈（Stack）与堆（Heap）
+
+在一个进程的虚拟地址空间中，栈和堆是两个最核心的动态内存区域，它们从地址空间的两端向中间生长。
+
+**栈（Stack）**：
+- **管理方式**：由编译器和 CPU 指令自动管理，遵循 LIFO（后进先出）原则。
+- **存储内容**：函数的局部变量、函数参数、返回地址、寄存器上下文（用于函数调用）。
+- **生命周期**：随函数调用而分配，随函数返回而自动释放。
+- **性能**：极快。分配和释放只需移动栈指针寄存器（`SP`）。
+- **限制**：容量有限（通常为 1MB ~ 8MB，由操作系统和编译器决定）。过大的局部数组或深度递归会导致 **栈溢出（Stack Overflow）**。
+
+**堆（Heap）**：
+- **管理方式**：由程序员（或语言的运行时/垃圾回收器）显式或隐式管理。
+- **存储内容**：动态分配的对象、全局数据、大型数据结构。
+- **生命周期**：从分配时刻开始，直到被显式释放（如 C 的 `free`）或被垃圾回收器判定为不可达。
+- **性能**：较慢。分配时需要查找合适的空闲块，可能涉及复杂的内存分配器算法（如 ptmalloc、jemalloc）。频繁的堆分配还会导致内存碎片。
+- **容量**：理论上受限于进程的虚拟地址空间大小（在 64 位系统上非常大）。
+
+### V8 引擎的堆结构
+
+Google 的 V8 引擎（Chrome 和 Node.js 的 JavaScript 运行时）对堆内存进行了高度工程化的设计，以支持高效的垃圾回收（GC）。
+
+V8 的堆主要分为以下几个区域：
+
+1.  **新生代（New Space / Young Generation）**：
+    存放生命周期短的对象。大部分新创建的对象首先被分配在这里。新生代又细分为两个等大的半区：**From Space** 和 **To Space**。V8 使用 **Scavenge 算法** 进行新生代的垃圾回收：将 From Space 中存活的对象复制到 To Space，然后清空 From Space，最后交换两个半区的角色。这种算法的优点是停顿时间极短（毫秒级），非常适合回收大量临时对象。
+
+2.  **老生代（Old Space / Old Generation）**：
+    存放经过多轮 Scavenge 仍然存活的对象，或体积过大的对象（直接晋升到老生代）。老生代使用 **Mark-Sweep（标记-清除）** 和 **Mark-Compact（标记-整理）** 算法。标记阶段遍历对象图，标记所有可达对象；清除阶段回收未标记对象的内存；整理阶段将存活对象向一端移动，减少内存碎片。由于老生代对象多、存活率高，完整的 Mark-Compact 会导致较长的停顿时间（Full GC）。V8 通过**增量标记（Incremental Marking）**、**并发标记（Concurrent Marking）**和**并行整理（Parallel Compaction）**等技术，将停顿时间分散和缩短。
+
+3.  **大对象空间（Large Object Space, LOS）**：
+    专门用于分配超过一定阈值（如 1MB）的大对象（如巨大的 `ArrayBuffer` 或长字符串）。这些对象不会参与新生代的复制，直接在 LOS 中分配和回收。
+
+4.  **代码空间（Code Space）**：
+    存放 JIT 编译器生成的机器码。这部分内存通常具有可执行权限。
+
+5.  **Map Space**：
+    存放对象的隐藏类（Hidden Classes / Maps）。V8 使用隐藏类来优化属性访问速度。
+
+## 用法
+
+### JavaScript 中的栈与堆行为
+
+```javascript
+// 基本类型（Primitive）存储在栈上（或栈帧的寄存器中）
+function primitivesOnStack() {
+  let a = 10;      // 栈分配
+  let b = true;    // 栈分配
+  let c = "hello"; // 字符串：V8 可能会将其内容存放在堆中，但变量引用在栈上
+}
+
+// 对象类型（Object）存储在堆上，栈上只保存指针（引用）
+function objectOnHeap() {
+  let obj = { x: 1, y: 2 }; // 对象本体在堆上，obj 是栈上的引用
+  let arr = [1, 2, 3];      // 数组本体在堆上
+}
+
+// 闭包：内部函数持有对外部函数局部变量的引用
+// 这些变量不会被栈回收，而是被 V8 移动到堆上的闭包对象中
+function createCounter() {
+  let count = 0; // 虽然 count 是局部变量，但会被提升到堆中以供闭包访问
+  return function() {
+    return ++count;
+  };
+}
+const counter = createCounter();
+console.log(counter()); // 1
+console.log(counter()); // 2
+```
+
+### 使用 Chrome DevTools 分析内存
+
+```javascript
+// 在控制台中使用 Heap Snapshot 之前，可以强制触发 GC
+// 注意：这是 V8 提供的非标准扩展，仅在部分环境可用
+if (globalThis.gc) {
+  globalThis.gc();
+}
+
+// 使用 WeakRef 和 FinalizationRegistry 观察对象生命周期（ES2021）
+let target = { data: "sensitive" };
+const ref = new WeakRef(target);
+const registry = new FinalizationRegistry((heldValue) => {
+  console.log(`Object has been garbage collected. Held value: ${heldValue}`);
+});
+registry.register(target, "my-object-id");
+
+target = null; // 解除强引用
+// 稍后 GC 运行时，FinalizationRegistry 的回调可能被触发
+```
+
+### ArrayBuffer 与内存管理
+
+```javascript
+// ArrayBuffer 分配的是堆外内存（Backing Store），不占用 V8 的堆空间
+const buffer = new ArrayBuffer(1024 * 1024 * 100); // 100MB
+const view = new Uint8Array(buffer);
+
+// 在 Node.js 中，可以通过 worker_threads 的 transferList 转移所有权
+const { Worker, isMainThread, workerData } = require('worker_threads');
+
+if (isMainThread) {
+  const sab = new SharedArrayBuffer(1024);
+  new Worker(__filename, {
+    workerData: sab,
+  });
+} else {
+  const sab = workerData;
+  const arr = new Int32Array(sab);
+  Atomics.store(arr, 0, 42);
+}
+```
+
+## 实践
+
+### 场景一：前端内存泄漏排查
+
+前端应用中最常见的内存泄漏模式包括：
+
+1.  **意外的全局变量**：未声明的变量（如 `function foo() { bar = 'global'; }`）会成为 `window` 对象的属性，永远不会被回收。
+2.  **遗忘的定时器和回调**：`setInterval` 或事件监听器持有对 DOM 节点或组件实例的引用，即使组件已卸载，相关对象仍无法被 GC。
+3.  **闭包陷阱**：闭包无意中捕获了大对象，导致其生命周期被意外延长。
+
+```javascript
+// 反模式：组件卸载时未清理定时器
+class LeakyComponent {
+  constructor() {
+    this.data = new Array(1000000).fill("x"); // 大对象
+    this.timer = setInterval(() => {
+      console.log(this.data.length); // 闭包捕获了 this，导致整个组件无法释放
+    }, 1000);
+  }
+  // 缺少 destroy() { clearInterval(this.timer); }
+}
+
+// 正模式：显式清理，或利用 WeakRef 避免强引用
+class SafeComponent {
+  constructor() {
+    this.data = new Array(1000000).fill("x");
+    const weakThis = new WeakRef(this);
+    this.timer = setInterval(() => {
+      const instance = weakThis.deref();
+      if (!instance) {
+        clearInterval(this.timer);
+        return;
+      }
+      console.log(instance.data.length);
+    }, 1000);
+  }
+}
+```
+
+### 场景二：Node.js 服务的内存优化
+
+在 Node.js 服务端，V8 的默认堆内存限制（64 位约 1.4GB）可能成为瓶颈。可以通过启动参数调整：
+
+```bash
+# 设置老生代堆内存上限为 4GB
+node --max-old-space-size=4096 app.js
+
+# 设置新生代空间大小
+node --max-semi-space-size=64 app.js
+```
+
+对于处理大文件流的服务，应避免将文件内容一次性读入内存（堆），而应使用流（Stream）和管道（Pipe）进行分块处理。
+
+### 场景三：WebAssembly 的线性内存管理
+
+WebAssembly 实例拥有独立的线性内存（Linear Memory），本质上是一个可增长的 `ArrayBuffer`。前端开发者需要手动管理这块内存的分配与释放（通常借助 Emscripten 提供的 `malloc`/`free` 或 Rust 的 `wasm-bindgen`）。
+
+```javascript
+// 手动增长 WASM 内存
+const memory = new WebAssembly.Memory({ initial: 10, maximum: 100 });
+// initial: 10 页（每页 64KB = 65536 字节）
+memory.grow(5); // 再增长 5 页
+console.log(memory.buffer.byteLength); // 15 * 65536
+```
+
+## 陷阱
+
+| 陷阱描述 | 典型表现 | 解决方案 |
+|---------|---------|---------|
+| **循环引用导致内存泄漏** | 两个对象相互引用，即使外部无引用，某些旧版浏览器（IE6/7）的引用计数 GC 无法回收 | 现代 V8 使用标记-清除，已解决此问题；但仍需避免无意义的强引用循环 |
+| **闭包捕获大对象** | 闭包只使用了对象的一个属性，但 V8 会保留整个对象 | 在闭包外部解构所需属性，或只将必要值传入闭包 |
+| **Map/Set 的键值泄漏** | 使用普通 `Map` 缓存 DOM 节点，即使节点已从文档移除，`Map` 仍持有强引用 | 使用 `WeakMap` / `WeakSet`，键对象可被 GC 正常回收 |
+| **全局变量污染** | 未使用 `const`/`let`/`var` 声明的变量成为全局对象属性 | 启用严格模式（`'use strict'`）或使用 ESLint 的 `no-undef` 规则 |
+| **定时器未清理** | `setInterval` 持续运行，回调中引用了已卸载组件的状态 | 在组件 `unmount` / `beforeDestroy` 生命周期中清理所有定时器和事件监听 |
+| **Console 打印持有引用** | DevTools 控制台中的对象打印会阻止该对象被 GC | 生产环境移除 `console.log`；调试时避免打印大对象 |
+| **V8 堆外内存泄漏** | Node.js 中 C++ 扩展或 Buffer 分配的堆外内存未释放 | 使用 `process.memoryUsage()` 监控 `external` 字段，确保 Native 层正确释放资源 |
+| **分页导致的性能抖动** | 程序工作集（Working Set）超过物理内存，触发频繁的换页（Swapping/Thrashing） | 减少内存占用，优化数据结构，或增加物理内存；监控系统的 Page Fault 频率 |
+
+<Callout type="warning" title="WeakRef 的使用边界">
+`WeakRef` 和 `FinalizationRegistry` 为 JavaScript 提供了观察对象生命周期的能力，但它们不应被用作确定性资源清理机制（如关闭文件句柄或数据库连接）。因为 GC 的运行时机是不确定的，回调的执行也可能被延迟。对于关键资源，始终使用显式的 `dispose` 或 `close` 模式。
+</Callout>
+
+<Quiz
+  question="在 V8 引擎中，新生代的垃圾回收主要采用什么算法？"
+  options={[
+    "Mark-Sweep（标记-清除）",
+    "Scavenge（复制算法）",
+    "Reference Counting（引用计数）",
+    "Generational GC（分代回收）"
+  ]}
+  correctIndex={1}
+  explanation="V8 的新生代（New Space）采用 Scavenge 算法，将存活对象从 From Space 复制到 To Space，然后清空 From Space。这种算法的特点是速度快、停顿时间短，非常适合回收大量朝生夕死的临时对象。"
+/>
+
+<Quiz
+  question="为什么闭包中的局部变量不会被栈回收？"
+  options={[
+    "因为 V8 引擎有 Bug",
+    "因为闭包持有对这些变量的引用，V8 会将它们从栈移动到堆上，以确保闭包后续访问时数据仍然有效",
+    "因为局部变量默认就是堆分配的",
+    "因为 JavaScript 没有栈"
+  ]}
+  correctIndex={1}
+  explanation="闭包允许内部函数在外部函数返回后继续访问其变量。为了保证这一点，V8 不能将这些变量分配在会随着函数返回而销毁的栈帧上。因此，V8 会在检测到闭包时，将捕获的变量提升到堆内存中。"
+/>

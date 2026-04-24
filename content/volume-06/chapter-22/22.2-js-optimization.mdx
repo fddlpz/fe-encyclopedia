@@ -1,0 +1,368 @@
+---
+title: "22.2 JavaScript 执行优化：任务切分、主线程让步、避免长任务"
+description: "深入解析 JavaScript 事件循环、长任务检测、任务切分策略与主线程调度优化的原理与实战"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 22 章 运行时性能优化"
+section: "22.2"
+tags: ["长任务", "任务切分", "scheduler", "主线程", "事件循环", "INP"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals", "22.1-rendering-optimization"]
+related: ["20.2-core-web-vitals", "21.2-code-optimization", "22.3-memory-optimization"]
+crossRefs: ["20.2-core-web-vitals.mdx", "21.2-code-optimization.mdx", "22.3-memory-optimization.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 是单线程语言，所有代码执行、事件处理、渲染更新都在主线程（Main Thread）上串行进行。当主线程被长时间占用时，用户交互（点击、输入、滚动）无法得到及时响应，动画无法按时渲染，导致明显的卡顿感。理解事件循环（Event Loop）和任务调度机制，是优化 JavaScript 执行性能的基础。
+
+### 事件循环与任务队列
+
+浏览器的事件循环由以下组件构成：
+
+**调用栈（Call Stack）**
+
+同步 JavaScript 代码在调用栈上执行。函数调用被推入栈顶，执行完毕后弹出。调用栈是单线程的，同一时间只能执行一个函数。
+
+**任务队列（Task Queue / Macrotask Queue）**
+
+异步回调（如 `setTimeout`、`setInterval`、I/O 回调、UI 渲染事件）在任务队列中等待。当调用栈为空时，事件循环从任务队列中取出一个任务执行。
+
+**微任务队列（Microtask Queue）**
+
+`Promise.then`、`MutationObserver`、`queueMicrotask` 产生的回调进入微任务队列。微任务的优先级高于任务队列——当前任务执行完毕后，事件循环会清空所有微任务，然后再取下一个任务。
+
+**渲染时机**
+
+浏览器在每次事件循环迭代后检查是否需要渲染。若距离上一帧已超过 16.67ms（60fps 预算），浏览器会执行样式计算、布局和绘制。这意味着：**长任务会延迟渲染，导致掉帧**。
+
+### 长任务（Long Task）的定义与影响
+
+浏览器将占用主线程超过 50ms 的任务定义为"长任务"（Long Task）。长任务的危害不仅在于其本身的执行时间，更在于它会**阻塞其后所有任务和渲染的执行**。
+
+**长任务的常见来源：**
+
+- 大型数组的 `map`/`filter`/`reduce` 操作
+- 大量 DOM 节点的创建、插入或删除
+- 复杂的正则表达式匹配（回溯灾难）
+- JSON 的 `parse`/`stringify` 处理大数据
+- 第三方脚本的同步执行（如分析、广告、客服插件）
+- React/Vue 的大型组件树更新和重渲染
+
+**长任务对 INP 的影响：**
+
+INP（Interaction to Next Paint）测量交互到下一次绘制的完整时间。若用户点击时主线程正在执行一个 200ms 的长任务：
+- Input Delay = 200ms（等待长任务完成）
+- Processing Time = 事件处理函数执行时间
+- Presentation Delay = 样式计算和渲染时间
+
+长任务直接贡献了 Input Delay，是 INP 劣化的首要原因。
+
+### 任务切分（Task Yielding）的原理
+
+任务切分的核心思想是：将一个长任务拆分为多个短任务，在每个短任务之间让出主线程，让浏览器有机会处理用户输入和渲染。
+
+**时间切片（Time Slicing）的预算：**
+
+RAIL 模型建议每个任务控制在 50ms 以内，为渲染留出至少 16ms 的缓冲。但在实际切分中，更保守的目标是将每个切片控制在 **10~20ms**，确保在密集任务序列中仍有足够的渲染时间。
+
+**任务切分的实现机制：**
+
+1. **`setTimeout(fn, 0)`**：将任务推迟到下一个事件循环迭代。最小延迟通常为 4ms（HTML5 规范限制）。
+2. **`requestIdleCallback`**：在浏览器空闲时执行任务，但可能长时间不被调用。
+3. **`scheduler.yield()`**（Chrome 115+）：显式让出主线程，将当前任务的剩余部分安排到下一个事件循环迭代。
+4. **`MessageChannel`**：比 `setTimeout` 更精确的微任务级别调度。
+5. **`requestAnimationFrame`**：与渲染周期对齐，适合需要在下一帧前完成的任务。
+
+### React 的并发特性与调度
+
+React 18 引入了并发渲染（Concurrent Rendering），将渲染工作拆分为多个小单元（Unit of Work），在每次单元后检查是否有更高优先级的任务（如用户输入）需要处理。
+
+**Scheduler 的优先级模型：**
+
+| 优先级 | 场景 | 是否可中断 |
+|--------|------|-----------|
+| ImmediatePriority | 用户输入（点击、键盘） | 否 |
+| UserBlockingPriority | 用户阻塞操作（滚动、拖拽） | 是 |
+| NormalPriority | 普通状态更新（setState） | 是 |
+| LowPriority | 数据分析、日志上报 | 是 |
+| IdlePriority | 预加载、非关键工作 | 是 |
+
+`useTransition` 和 `useDeferredValue` 是 React 提供的并发 API，允许开发者将低优先级更新标记为可中断的。
+
+## 用法
+
+### 使用 scheduler.yield() 切分长任务
+
+```javascript
+// Chrome 115+ 支持 scheduler.yield()
+async function processLargeArray(items) {
+  const results = [];
+  const BATCH_SIZE = 100;
+
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
+
+    // 处理当前批次
+    for (const item of batch) {
+      results.push(heavyComputation(item));
+    }
+
+    // 每处理一批让出主线程
+    if (i + BATCH_SIZE < items.length && 'scheduler' in window) {
+      await scheduler.yield();
+    }
+  }
+
+  return results;
+}
+
+// 降级方案：使用 setTimeout 模拟 yield
+function yieldToMain() {
+  return new Promise(resolve => {
+    setTimeout(resolve, 0);
+  });
+}
+```
+
+### 使用 requestIdleCallback 执行非关键任务
+
+```javascript
+function scheduleIdleTasks(tasks, timeout = 2000) {
+  if (!('requestIdleCallback' in window)) {
+    // 降级：分批使用 setTimeout
+    tasks.forEach((task, i) => setTimeout(task, i * 16));
+    return;
+  }
+
+  let index = 0;
+
+  function work(idleDeadline) {
+    while (index < tasks.length && idleDeadline.timeRemaining() > 0) {
+      tasks[index]();
+      index++;
+    }
+
+    if (index < tasks.length) {
+      requestIdleCallback(work, { timeout });
+    }
+  }
+
+  requestIdleCallback(work, { timeout });
+}
+
+// 使用示例：批量上报分析数据
+const analyticsTasks = events.map(event => () => sendAnalytics(event));
+scheduleIdleTasks(analyticsTasks);
+```
+
+### React 18 useTransition 优化交互
+
+```javascript
+import { useState, useTransition, useDeferredValue } from 'react';
+
+function SearchResults() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [isPending, startTransition] = useTransition();
+
+  // 被推迟的值：在过渡期间保持旧值
+  const deferredQuery = useDeferredValue(query);
+
+  function handleChange(e) {
+    const value = e.target.value;
+
+    // 立即更新输入框（高优先级）
+    setQuery(value);
+
+    // 将搜索结果更新标记为低优先级过渡
+    startTransition(() => {
+      const searchResults = performExpensiveSearch(value);
+      setResults(searchResults);
+    });
+  }
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={handleChange}
+        style={{ opacity: isPending ? 0.7 : 1 }}
+      >
+      {isPending && <span>搜索中...</span>}
+      <ResultsList query={deferredQuery} data={results} />
+    </div>
+  );
+}
+```
+
+### 使用 Web Worker 卸载主线程
+
+```javascript
+// worker.js - 排序 Worker
+self.addEventListener('message', (event) => {
+  const { array, id } = event.data;
+
+  // 在主线程外执行耗时排序
+  const sorted = array.sort((a, b) => a.value - b.value);
+
+  self.postMessage({ result: sorted, id });
+});
+```
+
+```javascript
+// main.js - 主线程中使用 Worker
+const worker = new Worker('/worker.js');
+const pending = new Map();
+
+function sortInWorker(array) {
+  return new Promise((resolve, reject) => {
+    const id = Math.random().toString(36).slice(2);
+    pending.set(id, { resolve, reject });
+    worker.postMessage({ array, id });
+  });
+}
+
+worker.addEventListener('message', (event) => {
+  const { result, id, error } = event.data;
+  const promise = pending.get(id);
+  if (!promise) return;
+
+  pending.delete(id);
+  if (error) promise.reject(error);
+  else promise.resolve(result);
+});
+
+// 使用
+async function handleSort() {
+  const sorted = await sortInWorker(largeArray);
+  setData(sorted);
+}
+```
+
+### 长任务监控与上报
+
+```javascript
+// 实时监控长任务
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    if (entry.duration > 50) {
+      console.warn('长任务 detected:', {
+        duration: entry.duration,
+        startTime: entry.startTime,
+        // 归因信息（如可用）
+        attribution: entry.attribution?.map(a => ({
+          name: a.name,
+          containerSrc: a.containerSrc,
+          duration: a.duration,
+        })),
+      });
+
+      // 上报到监控系统
+      analytics.track('longtask', {
+        duration: entry.duration,
+        url: location.href,
+      });
+    }
+  }
+});
+
+observer.observe({ entryTypes: ['longtask'] });
+```
+
+## 实践
+
+### 案例：大数据表格排序优化
+
+某数据仪表盘需要对 10000 行数据进行客户端排序，点击表头后页面冻结 2 秒。
+
+**优化前：**
+
+```javascript
+// 阻塞主线程 2 秒
+function handleSort(column) {
+  const sorted = data.sort((a, b) => {
+    // 复杂比较逻辑
+    return compareValues(a[column], b[column]);
+  });
+  setData(sorted); // React 重新渲染 10000 行
+}
+```
+
+**优化后：**
+
+```javascript
+import { useTransition } from 'react';
+
+function DataTable() {
+  const [isPending, startTransition] = useTransition();
+
+  function handleSort(column) {
+    startTransition(() => {
+      const sorted = [...data].sort((a, b) => compareValues(a[column], b[column]));
+      setData(sorted);
+    });
+  }
+
+  // 虚拟列表只渲染视口内 20 行
+  return (
+    <div>
+      {isPending && <SortIndicator />}
+      <VirtualList data={data} itemHeight={40} />
+    </div>
+  );
+}
+```
+
+**结果：** 排序期间输入保持响应，INP 从 2000ms 降至 120ms。`useTransition` 将排序和重渲染标记为可中断的低优先级更新。
+
+### 任务切分粒度决策矩阵
+
+| 场景 | 切分策略 | 工具 |
+|------|----------|------|
+| 大型数组处理 | 每 50~100 项 yield 一次 | `scheduler.yield()` / `setTimeout` |
+| DOM 批量插入 | 每 20 个节点插入后 yield | `requestAnimationFrame` |
+| 大量计算（排序/聚合） | 移至 Web Worker | `new Worker()` |
+| React 状态更新 | 使用 `useTransition` | React 18+ |
+| 非关键后台任务 | 空闲时执行 | `requestIdleCallback` |
+| 第三方脚本加载 | 延迟到交互后加载 | `defer` / 动态注入 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 切分粒度过细 | 每 1ms 让出一次主线程 | 调度开销超过执行开销，总体时间增加 30~50% |
+| 忽略微任务堆积 | `Promise.then` 链过长，微任务队列无法清空 | 虽然单个微任务短，但连续执行形成"微任务长任务" |
+| 在 rAF 中执行长任务 | `requestAnimationFrame` 中执行耗时计算 | 延迟渲染，导致掉帧 |
+| 过度使用 Web Worker | 将简单计算（如数组过滤）移至 Worker | 序列化/反序列化开销超过收益 |
+| 忽略第三方脚本 | 分析、广告脚本在主线程同步执行 | 产生不可控的长任务，INP 劣化 |
+| 认为 useTransition 万能 | 对高优先级更新（如输入反馈）使用 useTransition | 用户感觉延迟，体验变差 |
+| 未监控实际长任务 | 仅在代码层面优化，不验证真实效果 | 遗漏未预期的长任务来源 |
+
+<Callout type="info" title="scheduler.yield() 的浏览器支持">
+`scheduler.yield()` 是 Chrome 115+ 引入的新 API，目前 Firefox 和 Safari 尚未支持。在生产环境中，应提供基于 `setTimeout` 的 polyfill。注意 `scheduler.yield()` 与 `setTimeout` 的语义差异：`yield()` 保持任务在相同的事件循环优先级，而 `setTimeout` 将任务降级到 macrotask 队列。对于需要保持较高优先级的场景（如用户交互后的更新），`yield()` 更为合适。
+</Callout>
+
+<Quiz
+  question="为什么长任务（Long Task）会严重影响 INP（Interaction to Next Paint）？"
+  options={[
+    "长任务会消耗更多内存",
+    "长任务阻塞主线程，导致用户交互事件必须等待长任务完成后才能被处理，直接增加了 Input Delay",
+    "长任务会自动降低浏览器优先级",
+    "长任务会导致网络请求延迟"
+  ]}
+  correctIndex={1}
+  explanation="INP = Input Delay + Processing Time + Presentation Delay。当主线程正在执行长任务时，用户交互事件（如点击）被排队等待，直到长任务完成才能开始处理。这个等待时间就是 Input Delay。一个 200ms 的长任务意味着用户的点击至少被延迟 200ms，严重影响交互体验。"
+/>
+
+<Quiz
+  question="React 18 的 `useTransition` 如何解决大型状态更新导致的卡顿？"
+  options={[
+    "使用 Web Worker 执行更新",
+    "将状态更新标记为可中断的低优先级过渡，允许浏览器在处理过程中响应用户交互和高优先级更新",
+    "自动减少渲染的 DOM 节点数量",
+    "禁用所有动画"
+  ]}
+  correctIndex={1}
+  explanation="useTransition 将包裹的状态更新标记为低优先级的过渡（Transition）。React 的并发渲染器会将这些更新拆分为小单元，在每次单元后检查是否有更高优先级的任务（如用户输入）。如果有，React 会暂停当前过渡，优先处理高优先级任务，从而保持交互响应性。"
+/>

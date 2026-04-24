@@ -1,0 +1,161 @@
+---
+title: "11.2 JSX 与编译：JSX 转换、Babel 插件、@jsx 注释"
+description: "JSX 转换、Babel 插件、@jsx 注释"
+volume: "卷四：框架与状态管理"
+chapter: "第 11 章 React 原理与生态"
+section: "11.2"
+tags: ["JSX", "Babel", "AST", "编译"]
+difficulty: "基础"
+prerequisites: []
+related: ["11.1-react-philosophy", "11.6-rendering"]
+crossRefs: ["6.1-js-history"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JSX（JavaScript XML）是一种 JavaScript 语法扩展，允许在 JavaScript 中编写类似 HTML 的结构。JSX 不是模板引擎，而是纯粹的语法糖，最终会被编译为普通的 JavaScript 函数调用。
+
+### JSX 的本质
+
+以下 JSX 代码：
+
+```jsx
+const element = (
+  <h1 className="greeting">
+    Hello, {name}!
+  </h1>
+);
+```
+
+经过 Babel 或 TypeScript 编译后，等价于：
+
+```js
+const element = React.createElement(
+  'h1',
+  { className: 'greeting' },
+  'Hello, ',
+  name,
+  '!'
+);
+```
+
+React 17 引入了新的 JSX 转换（JSX Transform），不再需要显式导入 `React`：
+
+```js
+// React 17+ 自动运行时
+import { jsx as _jsx } from 'react/jsx-runtime';
+const element = _jsx('h1', { className: 'greeting', children: 'Hello, world!' });
+```
+
+新转换的优势：
+
+- 无需在每个文件顶部 `import React from 'react'`。
+- 生成的包体积略小（`jsx` 函数的签名更简洁）。
+- 支持通过 Babel 配置自定义 JSX 运行时（如 Preact、Emotion）。
+
+### JSX 编译的 AST 转换
+
+Babel 处理 JSX 时，通过 `@babel/plugin-transform-react-jsx` 插件执行 AST 转换：
+
+1. **解析**：`@babel/parser` 将 JSX 语法解析为特殊的 AST 节点（`JSXElement`、`JSXAttribute`、`JSXExpressionContainer` 等）。
+2. **转换**：访问者遍历 JSX 节点，将其替换为函数调用表达式。
+3. **生成**：输出标准 JavaScript。
+
+JSX 中的表达式插值 `{}` 在 AST 中被解析为 `JSXExpressionContainer`，其内部可以是任意 JavaScript 表达式。
+
+### 关键编译规则
+
+- **标签名以小写字母开头**：编译为字符串字面量（如 `'div'`），表示 HTML 原生元素。
+- **标签名以大写字母开头**：编译为变量引用（如 `MyComponent`），表示自定义组件。
+- **展开属性**：`{...props}` 编译为 `Object.assign` 或对象展开。
+- **条件渲染**：`{condition && <A />}` 是惯用法，但注意 `condition` 为 `0` 时会渲染 `0`。
+
+```jsx
+// 条件渲染陷阱
+{count && <Badge />}
+// 当 count === 0 时，渲染 0 而非不渲染
+// 应改为：{count > 0 && <Badge />} 或 {count ? <Badge /> : null}
+```
+
+### @jsx 注释与自定义运行时
+
+在 Babel 配置不便修改的场景（如单文件测试），可通过文件顶部的注释指定 JSX 运行时：
+
+```jsx
+/** @jsx h */
+/** @jsxFrag Fragment */
+import { h, Fragment } from 'preact';
+
+const vnode = <div>Hello</div>; // 编译为 h('div', null, 'Hello')
+```
+
+React 17+ 的自动运行时通过 `/** @jsxImportSource preact */` 指定自定义来源。
+
+## 用法
+
+```jsx
+// JSX 中的 JavaScript 表达式
+function UserCard({ user }) {
+  return (
+    <div className={`card ${user.vip ? 'vip' : ''}`}>
+      <img src={user.avatar} alt={user.name} />
+      <h2>{user.name.toUpperCase()}</h2>
+      <ul>
+        {user.tags.map(tag => (
+          <li key={tag.id}>{tag.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+## 实践
+
+### 列表渲染与 key 属性
+
+JSX 列表必须提供稳定的 `key` 属性，帮助 React 识别哪些元素发生了变化。`key` 应在兄弟节点间唯一，推荐使用数据本身的唯一 ID，而非数组索引（除非列表是静态的）。
+
+### 避免 JSX 中的复杂表达式
+
+JSX 中嵌套过深的表达式会降低可读性。建议将复杂逻辑提取到组件外部或自定义 Hook 中：
+
+```jsx
+// 不好
+return (
+  <div>
+    {data.filter(x => x.active).map(x => x.name).join(', ')}
+  </div>
+);
+
+// 好
+const activeNames = data.filter(x => x.active).map(x => x.name).join(', ');
+return <div>{activeNames}</div>;
+```
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| `class` 代替 `className` | 控制台警告，样式不生效 | 使用 `className`；或使用 `clsx`/`classnames` 库 |
+| `for` 代替 `htmlFor` | 控制台警告 | 使用 `htmlFor` |
+| `style` 传入字符串 | 样式不生效 | `style` 必须传入对象 `{ color: 'red' }` |
+| `0 && <Component />` | 渲染出 `0` | 使用 `count > 0 &&` 或三元表达式 |
+| 忘记 key 或使用索引 | 列表更新时状态错乱、性能下降 | 使用数据唯一 ID 作为 key |
+
+## 测验
+
+<Quiz
+  question="React 17 引入的新 JSX 转换相比旧转换的主要改进是什么？"
+  options={["性能提升 50%", "无需显式导入 React", "支持 HTML 模板语法", "移除了虚拟 DOM"]}
+  correctIndex={1}
+  explanation="React 17 的新 JSX 转换自动从 react/jsx-runtime 导入 jsx 函数，开发者无需在每个文件顶部写 import React from 'react'。"
+/>
+
+<Quiz
+  question="JSX 中 `{0 && <div />}` 的渲染结果是什么？"
+  options={["不渲染任何内容", "渲染 <div />", "渲染数字 0", "报错"]}
+  correctIndex={2}
+  explanation="在 JSX 中，0 是 falsy 值，但 && 表达式会返回 0 这个值本身，而 React 会渲染 0。应使用 count > 0 && <div /> 或三元表达式避免此问题。"
+/>

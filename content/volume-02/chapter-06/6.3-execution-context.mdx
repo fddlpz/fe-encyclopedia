@@ -1,0 +1,174 @@
+---
+title: "6.3 执行上下文与作用域：全局/函数/Eval 上下文、作用域链、词法作用域、TDZ"
+description: "全局/函数/Eval 上下文、作用域链、词法作用域、TDZ"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.3"
+tags: ["执行上下文", "作用域", "闭包", "TDZ"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.4-closure", "6.5-this-binding"]
+crossRefs: []
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 代码的执行并非逐行简单解释，而是在一个精密的运行时模型中展开。理解执行上下文（Execution Context）、词法环境（Lexical Environment）和作用域链（Scope Chain）是掌握闭包、变量提升、`this` 绑定等高级主题的基础。
+
+### 执行上下文
+
+每当 JavaScript 引擎执行代码时，都会维护一个执行上下文栈（Execution Context Stack，又称调用栈 Call Stack）。栈顶的活动执行上下文是当前正在执行的代码所处的环境。ECMAScript 规范定义了三种执行上下文：
+
+1. **全局执行上下文（Global Execution Context）**：程序入口时创建，只有一个。它绑定全局对象（浏览器中为 `window`，Node.js 中为 `global`/`globalThis`），并将 `this` 指向该全局对象。
+2. **函数执行上下文（Function Execution Context）**：每次函数被调用时创建。函数的每次调用都会生成一个全新的执行上下文，即使调用的是同一个函数。
+3. **Eval 执行上下文（Eval Execution Context）**：`eval()` 执行代码时创建，现代工程已极少使用。
+
+每个执行上下文在概念上包含三个核心组件：
+
+- **词法环境（LexicalEnvironment）**：用于解析标识符（变量名、函数名）引用，由环境记录（Environment Record）和对外部词法环境的引用（Outer Env）组成。
+- **变量环境（VariableEnvironment）**：ES3 时代的遗留概念，在 ES6 之后与词法环境分离，专门用于存储 `var` 声明的绑定。在严格模式下，它与 LexicalEnvironment 通常是同一个引用。
+- **ThisBinding**：当前执行上下文中 `this` 关键字的绑定值。
+
+### 环境记录与作用域链
+
+**环境记录（Environment Record）** 是变量和函数声明的实际存储结构，分为两种：
+
+- **声明式环境记录（Declarative Environment Record）**：用于存储函数、变量（`let`/`const`/`var`）、类声明等。函数执行上下文和块级作用域使用此类型。
+- **对象环境记录（Object Environment Record）**：用于将一组标识符绑定到具体对象的属性上。全局执行上下文的 VariableEnvironment 使用此类型，将 `var` 声明和函数声明映射为全局对象的属性（非严格模式下）。
+
+**作用域链（Scope Chain）** 并非规范中的正式术语，但它是理解标识符解析的直观模型。当引擎查找一个变量时，会沿当前词法环境 → 外部词法环境 → 全局词法环境的路径逐级向上查找，直到找到该标识符或到达链顶抛出 `ReferenceError`。这条链路在函数定义时就已经确定，而非调用时——这就是**词法作用域（Lexical Scoping）**的本质。
+
+### 变量提升与声明阶段
+
+JavaScript 引擎在真正执行代码之前，会先进入**创建阶段（Creation Phase）**，扫描当前作用域内的所有声明并建立绑定：
+
+- **`var` 声明**：创建绑定并初始化为 `undefined`，因此在声明语句之前访问不会报错（得到 `undefined`），这就是"变量提升"。
+- **`let`/`const` 声明**：创建绑定但不初始化。在声明语句之前的区域称为**暂时性死区（Temporal Dead Zone, TDZ）**，访问会抛出 `ReferenceError: Cannot access 'x' before initialization`。
+- **函数声明**：整体提升，包括函数体。因此可以在声明之前调用函数。
+- **类声明**：与 `let` 类似，存在 TDZ，且类表达式不会提升。
+
+```js
+console.log(a); // undefined（var 提升，初始化为 undefined）
+var a = 1;
+
+console.log(b); // ReferenceError: Cannot access 'b' before initialization
+let b = 2;
+
+foo(); // 正常执行，函数声明整体提升
+function foo() {}
+
+new Bar(); // ReferenceError: Cannot access 'Bar' before initialization
+class Bar {}
+```
+
+### 块级作用域与词法环境
+
+ES6 引入的 `let` 和 `const` 带来了真正的块级作用域。每一个块语句（`{}`）都会创建一个新的词法环境，块内声明的变量在该词法环境的环境记录中存储，块结束时环境记录被释放（除非被闭包引用）。
+
+`var` 不存在块级作用域，它的作用域是函数级别的。在全局作用域中使用 `var` 会创建全局对象的可配置属性；使用 `let`/`const` 则创建全局词法环境中的绑定，不会成为全局对象的属性。
+
+```js
+if (true) {
+  var x = 1;
+  let y = 2;
+}
+console.log(x); // 1
+console.log(y); // ReferenceError: y is not defined
+```
+
+### TDZ 的深层机制
+
+TDZ 不是语法错误，而是运行时语义。引擎在环境记录中为 `let`/`const` 绑定预留了槽位，但标记为未初始化。任何试图访问该槽位的操作（包括 `typeof`）都会触发 `ReferenceError`。只有当执行流到达声明语句并执行初始化器（或隐式初始化为 `undefined`）后，槽位才变为可用状态。
+
+一个经典的 TDZ 死锁场景：
+
+```js
+let x = x; // ReferenceError: Cannot access 'x' before initialization
+```
+
+在初始化器 `x` 中读取 `x` 时，`x` 的绑定已创建但尚未初始化，处于 TDZ 中。
+
+<Callout type="info" title="词法作用域 vs 动态作用域">
+JavaScript 采用词法作用域，即函数的作用域链由函数定义的位置决定，而非调用位置。这与动态作用域（如 Bash 脚本中的变量查找）形成鲜明对比。词法作用域使得代码的变量可见性在编写时即可确定，更易于推理和优化。
+</Callout>
+
+## 用法
+
+```js
+// 利用块级作用域隔离临时变量
+function processData(items) {
+  const results = [];
+  for (let i = 0; i < items.length; i++) {
+    // 每个迭代块都有自己的 i 绑定
+    const item = items[i];
+    {
+      // 显式块级作用域，限制临时变量范围
+      const temp = heavyComputation(item);
+      results.push(temp);
+    } // temp 在此处被释放引用
+  }
+  return results;
+}
+
+// 函数声明 vs 函数表达式的提升差异
+console.log(declared()); // 'declared'
+console.log(expressed()); // TypeError: expressed is not a function
+
+function declared() { return 'declared'; }
+var expressed = function() { return 'expressed'; };
+```
+
+## 实践
+
+### 避免全局命名污染
+
+在浏览器环境中，全局执行上下文的对象环境记录将 `var` 和函数声明泄漏为 `window` 的属性。现代模块系统（ES Module、CommonJS）通过将代码包裹在模块作用域中从根本上解决了这个问题。在遗留脚本中，可使用 IIFE（立即执行函数表达式）创建局部作用域。
+
+### 循环中的闭包与块级绑定
+
+ES6 之前，`var` 在循环中共享同一个绑定，导致经典的闭包陷阱：
+
+```js
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 10); // 输出 3, 3, 3
+}
+```
+
+使用 `let` 后，每次迭代都会创建一个新的词法环境，`i` 的绑定被闭包正确捕获：
+
+```js
+for (let i = 0; i < 3; i++) {
+  setTimeout(() => console.log(i), 10); // 输出 0, 1, 2
+}
+```
+
+### 调试调用栈
+
+在 Chrome DevTools 的 Sources 面板中，可以在任意位置打断点并查看 Call Stack。理解执行上下文有助于分析异步回调的调用来源、`this` 的指向以及变量在特定帧中的值。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| `typeof` 未声明变量 | 正常返回 `"undefined"` | 这是历史遗留的安全行为，但 `typeof letVarInTDZ` 会抛 ReferenceError |
+| `var` 在块中"泄漏" | `if(true){var x=1}` 后 x 全局可访问 | 全面使用 `let`/`const`；启用 ESLint `no-var` |
+| 函数声明在块级作用域中的行为 | ES5 严格模式与松散模式表现不同，各引擎实现曾有差异 | 避免在块级作用域内声明函数；使用函数表达式替代 |
+| TDZ 与默认参数 | `function f(x=y, y=1){}` 在求值 x 时 y 处于 TDZ | 默认参数按从左到右顺序求值，注意依赖关系 |
+| `const` 只保证绑定不变 | `const obj = {}; obj.a = 1` 合法 | 需要不可变对象时使用 `Object.freeze` 或 Immutable 库 |
+
+## 测验
+
+<Quiz
+  question="以下代码的输出是什么？`console.log(typeof undeclaredVar); console.log(typeof tdzLet); let tdzLet;`"
+  options={["undefined, undefined", "undefined, ReferenceError", "ReferenceError, undefined", "ReferenceError, ReferenceError"]}
+  correctIndex={1}
+  explanation="typeof 对完全未声明的变量返回 'undefined'（安全行为），但对处于 TDZ 中的 let 变量会抛出 ReferenceError。"
+/>
+
+<Quiz
+  question="JavaScript 的作用域是词法作用域还是动态作用域？"
+  options={["动态作用域，取决于函数调用位置", "词法作用域，取决于函数定义位置", "全局作用域", "块级作用域"]}
+  correctIndex={1}
+  explanation="JavaScript 采用词法作用域（Lexical Scoping），函数的作用域链在函数定义时由其在源代码中的位置决定，而非调用时的位置。"
+/>

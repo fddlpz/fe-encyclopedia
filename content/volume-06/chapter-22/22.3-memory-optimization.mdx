@@ -1,0 +1,399 @@
+---
+title: "22.3 内存优化：对象生命周期、缓存失控、泄漏定位"
+description: "深入解析 JavaScript 内存管理、垃圾回收机制、常见内存泄漏模式与 DevTools 定位技术"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 22 章 运行时性能优化"
+section: "22.3"
+tags: ["内存优化", "泄漏", "生命周期", "DevTools", "垃圾回收", "V8"]
+difficulty: "进阶"
+prerequisites: ["22.2-js-optimization"]
+related: ["22.2-js-optimization", "22.1-rendering-optimization", "21.6-caching"]
+crossRefs: ["22.2-js-optimization.mdx", "22.1-rendering-optimization.mdx", "21.6-caching.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 是自动内存管理的语言，开发者无需手动分配和释放内存。但这并不意味着内存问题可以被忽视——内存泄漏会导致应用逐渐变慢、卡顿，最终崩溃。理解 V8 引擎的内存结构和垃圾回收机制，是诊断和修复内存问题的基础。
+
+### V8 的内存结构
+
+V8 将内存划分为几个主要区域：
+
+**新生代（New Space / Young Generation）**
+
+新生代用于存放生命周期短的对象，分为两个半区（Semi-space）：From-space 和 To-space。新创建的对象首先分配在 From-space。当 From-space 满时，触发**Scavenge**（清理）垃圾回收：遍历 From-space 中的存活对象，复制到 To-space，然后交换两个半区。未存活的对象自然被丢弃。
+
+Scavenge 是一种快速的垃圾回收算法，因为它只处理少量存活对象，且复制过程自然完成了内存整理（消除碎片）。
+
+**老生代（Old Space / Old Generation）**
+
+经过多次 Scavenge 仍然存活的对象被晋升（Promote）到老生代。老生代使用**Mark-Sweep-Compact**算法：
+
+1. **Mark（标记）**：从根对象（Global Object、执行上下文等）开始，遍历所有可达对象，标记为存活
+2. **Sweep（清除）**：遍历堆内存，回收未标记的对象空间
+3. **Compact（整理）**：将存活对象移动到堆的一端，消除内存碎片
+
+老生代 GC 是"全停顿"（Stop-The-World）的，会暂停 JavaScript 执行。V8 通过**增量标记（Incremental Marking）**和**并行/并发标记**减少停顿时间。
+
+**其他内存区域：**
+
+- **大对象空间（Large Object Space）**：大于 1MB 的对象直接分配于此，不参与新生代 GC
+- **代码空间（Code Space）**：JIT 编译后的机器码
+- **Map Space**：隐藏类（Hidden Class）和形状（Shape）信息
+
+### 垃圾回收的根对象
+
+GC 从以下根对象开始遍历：
+
+1. 全局对象（`window` / `globalThis`）
+2. 当前执行栈上的局部变量和参数
+3. 当前激活的闭包引用的变量
+4. DOM 树中的节点（若被 JavaScript 引用）
+5. `setInterval` / `setTimeout` 的回调
+6. WebSocket、EventSource 等活跃连接
+
+**任何从根对象可达的对象都不会被回收。**
+
+### 常见内存泄漏模式
+
+**1. 意外的全局变量**
+
+```javascript
+function leak() {
+  // 未声明变量，自动成为全局属性
+  leakedArray = new Array(1000000).fill('x');
+}
+```
+
+**2. 闭包引用外部变量**
+
+```javascript
+function createLeak() {
+  const hugeData = new Array(1000000).fill('data');
+
+  return function smallFunction() {
+    // 即使只使用了一个属性，整个 hugeData 数组被闭包引用
+    console.log(hugeData.length);
+  };
+}
+
+const leaky = createLeak();
+// hugeData 永远不会被释放，因为 leaky 引用了它
+```
+
+**3. 遗忘的定时器和回调**
+
+```javascript
+const data = fetchData();
+
+// 即使组件卸载，定时器继续运行，data 被引用
+setInterval(() => {
+  console.log(data);
+}, 1000);
+```
+
+**4. DOM 引用未清理**
+
+```javascript
+const elements = {
+  button: document.getElementById('button'),
+};
+
+// 即使从 DOM 树中移除了 button，elements.button 仍然引用它
+// 导致整个 DOM 子树无法释放
+elements.button.remove();
+```
+
+**5. 事件监听器未移除**
+
+```javascript
+class EventEmitter {
+  constructor() {
+    this.listeners = [];
+  }
+
+  on(event, handler) {
+    this.listeners.push({ event, handler });
+  }
+
+  // 缺少 off 方法，监听器永久累积
+}
+```
+
+**6. Map/Set 作为缓存无上限增长**
+
+```javascript
+const cache = new Map();
+
+function getData(key) {
+  if (cache.has(key)) return cache.get(key);
+
+  const data = computeExpensiveData(key);
+  cache.set(key, data); // 永不清除，内存无限增长
+  return data;
+}
+```
+
+## 用法
+
+### 使用 WeakMap/WeakSet 避免泄漏
+
+```javascript
+// WeakMap 的键是弱引用，不会阻止垃圾回收
+const elementData = new WeakMap();
+
+function attachData(element, data) {
+  elementData.set(element, data);
+}
+
+// 当 element 从 DOM 移除且没有其他引用时，
+// WeakMap 中的条目会自动被 GC 回收
+```
+
+### 实现 LRU 缓存控制内存
+
+```javascript
+class LRUCache {
+  constructor(maxSize = 100) {
+    this.maxSize = maxSize;
+    this.cache = new Map();
+  }
+
+  get(key) {
+    if (!this.cache.has(key)) return undefined;
+
+    // 访问后移到末尾（最新）
+    const value = this.cache.get(key);
+    this.cache.delete(key);
+    this.cache.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    } else if (this.cache.size >= this.maxSize) {
+      // 删除最久未使用的（Map 的第一个键）
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+
+    this.cache.set(key, value);
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+}
+
+// 使用示例
+const imageCache = new LRUCache(50); // 最多缓存 50 张图片
+```
+
+### React 组件中的内存管理
+
+```javascript
+import { useEffect, useRef } from 'react';
+
+function DataComponent({ dataSource }) {
+  const abortControllerRef = useRef(null);
+  const observerRef = useRef(null);
+
+  useEffect(() => {
+    // 创建新的 AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // 发起请求
+    fetch(dataSource, { signal: controller.signal })
+      .then(r => r.json())
+      .then(setData);
+
+    // 创建 Intersection Observer
+    const observer = new IntersectionObserver(handleIntersection);
+    observerRef.current = observer;
+    observer.observe(elementRef.current);
+
+    // 清理函数：组件卸载时执行
+    return () => {
+      controller.abort(); // 取消进行中的请求
+      observer.disconnect(); // 断开 Observer
+    };
+  }, [dataSource]);
+
+  // 定时器清理
+  useEffect(() => {
+    const interval = setInterval(pollData, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <div>{/* ... */}</div>;
+}
+```
+
+### 使用 Chrome DevTools 定位内存泄漏
+
+**步骤1：录制堆快照（Heap Snapshot）**
+
+1. 打开 DevTools -> Memory 面板
+2. 选择"Heap Snapshot"，点击录制
+3. 执行 suspected 泄漏的操作（如反复打开/关闭模态框）
+4. 再次录制堆快照
+5. 对比两个快照，查看"Delta"列中增长的对象类型
+
+**步骤2：使用 Allocation Timeline**
+
+1. Memory 面板选择"Allocation instrumentation on timeline"
+2. 录制过程中执行操作
+3. 查看时间线上的蓝色条（表示分配的内存）
+4. 若蓝色条持续累积不下降，表明存在泄漏
+
+**步骤3：分析 Retainers（保留链）**
+
+在堆快照中选择一个可疑对象，查看"Retainers"面板。它展示了从根对象到该对象的引用链，帮助定位是谁在持有该对象。
+
+```javascript
+// 程序化触发堆快照（Node.js 环境）
+const v8 = require('v8');
+const fs = require('fs');
+
+function takeHeapSnapshot(filename) {
+  const snapshot = v8.writeHeapSnapshot(filename);
+  console.log('Heap snapshot written to:', snapshot);
+}
+
+// 在疑似内存泄漏前后分别调用
+takeHeapSnapshot('before.heapsnapshot');
+// 执行操作...
+takeHeapSnapshot('after.heapsnapshot');
+```
+
+### 使用 Performance Monitor 实时监控
+
+```javascript
+// 监控内存使用趋势
+function monitorMemory() {
+  if (performance.memory) {
+    const { usedJSHeapSize, totalJSHeapSize, jsHeapSizeLimit } = performance.memory;
+
+    console.log({
+      usedMB: (usedJSHeapSize / 1048576).toFixed(2),
+      totalMB: (totalJSHeapSize / 1048576).toFixed(2),
+      limitMB: (jsHeapSizeLimit / 1048576).toFixed(2),
+      usagePercent: ((usedJSHeapSize / jsHeapSizeLimit) * 100).toFixed(2) + '%',
+    });
+  }
+}
+
+// 定期监控
+setInterval(monitorMemory, 5000);
+```
+
+## 实践
+
+### 案例：SPA 路由切换导致的内存泄漏
+
+某 React SPA 在路由切换后内存持续增长，长时间使用后页面崩溃。
+
+**诊断过程：**
+
+1. Performance Monitor 显示每次路由切换后 `JS Heap Size` 增加 5~10MB
+2. Heap Snapshot 对比发现 `Detached HTMLDivElement` 数量持续增长
+3. Retainers 分析显示：Redux store 中缓存了每个访问过的页面的组件状态
+
+**根因：**
+
+```javascript
+// 错误：Redux reducer 累积所有历史页面状态
+const initialState = { pages: [] };
+
+function reducer(state = initialState, action) {
+  switch (action.type) {
+    case 'SET_PAGE_DATA':
+      return {
+        ...state,
+        pages: [...state.pages, action.payload], // 无限累积！
+      };
+    default:
+      return state;
+  }
+}
+```
+
+**修复：**
+
+```javascript
+// 正确：只保留当前页面状态，或使用 LRU 缓存最近 5 页
+const initialState = { currentPage: null, recentPages: new LRUCache(5) };
+
+function reducer(state = initialState, action) {
+  switch (action.type) {
+    case 'SET_PAGE_DATA':
+      state.recentPages.set(action.payload.id, action.payload);
+      return {
+        ...state,
+        currentPage: action.payload,
+      };
+    case 'CLEAR_HISTORY':
+      state.recentPages.clear();
+      return { ...state, currentPage: null };
+    default:
+      return state;
+  }
+}
+```
+
+**结果：** 路由切换后内存稳定，无持续增长。
+
+### 内存优化决策矩阵
+
+| 场景 | 风险 | 解决方案 |
+|------|------|----------|
+| 组件状态累积 | 路由切换后旧状态残留 | 卸载时清理，使用 LRU 缓存 |
+| 全局事件监听 | 组件卸载后监听器仍活跃 | `useEffect` 返回清理函数 |
+| DOM 引用缓存 | 移除的 DOM 节点无法释放 | 使用 WeakMap 替代 Map |
+| 定时器/轮询 | 组件卸载后定时器继续运行 | 清理函数中 `clearInterval` |
+| 大数据集处理 | 一次性加载过多数据 | 分页、虚拟滚动、流式处理 |
+| 第三方库缓存 | 库内部缓存无上限 | 查阅文档配置缓存上限 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 闭包捕获大对象 | 闭包只使用大对象的一个小属性，但整个对象被引用 | 大量内存无法释放 |
+| 全局事件总线 | 使用全局 EventEmitter，组件卸载不移除监听 | 监听器和关联数据无限累积 |
+| console.log 大对象 | 开发时 `console.log` 大对象，DevTools 保留引用 | 对象在 DevTools 打开时无法回收 |
+| 遗忘的 Promise | 创建 Promise 但不处理，内部引用持续存在 | 关联数据无法释放 |
+| 过度使用 memoization | `useMemo` / `memo` 缓存大量计算结果 | 内存占用持续增长 |
+| 忽略 iframe 内存 | 移除 iframe DOM 但不清理其内容 | iframe 内的 JS 上下文和 DOM 持续占用内存 |
+| 认为 WeakMap 万能 | 用 WeakMap 缓存计算结果，但键被其他地方强引用 | 缓存实际上永不清除 |
+
+<Callout type="warning" title="DevTools 打开时的内存测量偏差"
+>
+Chrome DevTools 打开时，控制台的历史记录会保留对输出对象的引用，导致这些对象无法被垃圾回收。这意味着在 DevTools 打开状态下测量的内存使用量通常高于真实用户环境。建议：1) 使用 Performance Monitor 而非控制台日志进行长期监控；2) 录制堆快照前清空控制台；3) 使用无痕模式进行内存测试，排除扩展程序干扰。
+</Callout>
+
+<Quiz
+  question="为什么闭包（Closure）容易导致内存泄漏？"
+  options={[
+    "闭包执行速度较慢",
+    "闭包会捕获其外部作用域的所有变量，即使闭包只使用了其中一小部分，整个作用域的对象都无法被垃圾回收",
+    "闭包会创建额外的全局变量",
+    "V8 引擎无法回收闭包占用的内存"
+  ]}
+  correctIndex={1}
+  explanation="闭包通过内部作用域链引用外部函数的变量。即使闭包只使用了外部作用域中的一个属性，垃圾回收器也会保留整个外部作用域的所有对象，因为它们从闭包函数对象可达。如果外部作用域包含大量数据（如大数组），这些数据将永远无法释放。"
+/>
+
+<Quiz
+  question="`WeakMap` 与普通 `Map` 在内存管理上的核心区别是什么？"
+  options={[
+    "WeakMap 只能存储字符串键",
+    "WeakMap 的键是弱引用，不会阻止键对象被垃圾回收；当键对象没有其他引用时，WeakMap 中的对应条目会自动消失",
+    "WeakMap 不支持遍历",
+    "WeakMap 存储在磁盘而非内存"
+  ]}
+  correctIndex={1}
+  explanation="WeakMap 的键是对象的弱引用。垃圾回收器在判断对象是否存活时，不会考虑 WeakMap 中的引用。这意味着当对象的其他强引用都消失时，WeakMap 中的键值对会自动被 GC 清除。这是管理 DOM 元素关联数据的理想工具，可以避免 DOM 移除后的内存泄漏。"
+/>

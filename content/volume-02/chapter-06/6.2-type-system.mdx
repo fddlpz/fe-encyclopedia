@@ -1,0 +1,207 @@
+---
+title: "6.2 类型系统：原始类型 vs 对象类型、typeof/instanceof、隐式转换、Symbol、BigInt"
+description: "原始类型 vs 对象类型、typeof/instanceof、隐式转换、Symbol、BigInt"
+volume: "卷二：Web 标准与语言规范"
+chapter: "第 6 章 JavaScript 语言精要"
+section: "6.2"
+tags: ["类型系统", "typeof", "Symbol", "BigInt"]
+difficulty: "基础"
+prerequisites: []
+related: ["6.1-js-history", "6.3-execution-context"]
+crossRefs: ["6.13-new-syntax"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+JavaScript 是一门动态类型语言，其类型系统建立在 ECMAScript 规范定义的抽象操作之上。理解类型系统不仅是掌握语言的基础，更是排查隐式转换 Bug、优化引擎性能的关键。
+
+### 类型分类：原始类型与对象类型
+
+ECMAScript 规范将语言类型（Language Types）分为两大类：
+
+**原始类型（Primitive Types）**：
+
+- **Undefined**：未定义，全局唯一的 `undefined` 值。
+- **Null**：空值，表示对象引用不指向任何对象。历史原因导致 `typeof null === 'object'` 是一个无法修正的 Bug。
+- **Boolean**：`true` 与 `false`。
+- **String**：UTF-16 编码的字符序列。JavaScript 字符串是不可变的（immutable），任何"修改"操作都返回新字符串。
+- **Symbol**：ES6 引入的唯一且不可变的原始值，主要用作对象属性的键，避免命名冲突。
+- **Number**：IEEE 754 双精度 64 位浮点数。包含特殊值 `NaN`、`Infinity`、`-Infinity`、`-0`。
+- **BigInt**：ES2020 引入的任意精度整数，以 `n` 结尾，不能与普通 Number 混用算术运算符。
+
+**对象类型（Object Type）**：
+
+对象是属性的集合，每个属性要么是数据属性（包含 `[[Value]]`），要么是访问器属性（包含 `[[Get]]`/`[[Set]]`）。函数（Function）、数组（Array）、日期（Date）、正则（RegExp）等本质上都是对象的特化，即内部 `[[Class]]` 或 `[[Prototype]]` 不同的普通对象。
+
+<Callout type="info" title="原始值与包装对象">
+原始值没有属性或方法，但表达式 `"abc".length` 却能正常执行。这是因为引擎在访问时隐式创建了对应的包装对象（String、Number、Boolean），访问完成后立即丢弃。显式使用 `new String("abc")` 会创建真正的对象，应尽量避免。
+</Callout>
+
+### typeof 与 instanceof 的语义差异
+
+`typeof` 操作符返回操作数的类型字符串，其判定逻辑由规范严格定义：
+
+- `undefined` → `"undefined"`
+- `null` → `"object"`（历史遗留 Bug）
+- `true`/`false` → `"boolean"`
+- 字符串 → `"string"`
+- Symbol → `"symbol"`
+- 数值 → `"number"`
+- BigInt → `"bigint"`
+- 函数对象（含 `[[Call]]` 内部方法）→ `"function"`
+- 其他对象 → `"object"`
+
+`instanceof` 操作符基于原型链查找，表达式 `obj instanceof Constructor` 等价于 `Constructor.prototype` 是否存在于 `obj` 的原型链上。它不检查构造函数本身，而是检查原型关联。这导致两个限制：
+
+1. 跨 Realm（如 iframe）的构造函数与对象无法正确判定，因为它们的原型链指向不同全局环境。
+2. 原始值无法使用 `instanceof` 判定类型。
+
+更可靠的类型判定方案：
+
+- 通用对象类型：`Object.prototype.toString.call(value).slice(8, -1)` 返回 `"Array"`、`"Date"`、`"RegExp"` 等。
+- 跨 Realm 安全：`Array.isArray`、`Number.isNaN` 等静态方法。
+- 自定义类型检查：`Symbol.hasInstance` 可重写 `instanceof` 行为。
+
+### 隐式类型转换（Coercion）
+
+JavaScript 的隐式转换规则复杂且容易出错，其根源在于抽象操作 `ToPrimitive`、`ToNumber`、`ToString`、`ToBoolean` 的交互。
+
+**ToPrimitive**：当对象需要转换为原始值时，引擎调用其 `@@toPrimitive` 方法（若存在），否则依次尝试 `valueOf()` 和 `toString()`。对于 `Date` 对象，优先尝试 `toString()`。
+
+**ToNumber**：
+
+- `undefined` → `NaN`
+- `null` → `0`
+- `true` → `1`，`false` → `0`
+- 空字符串 `""` → `0`，纯数字字符串 → 对应数字，其他字符串 → `NaN`
+- Symbol → 抛出 TypeError
+- 对象 → 先 ToPrimitive，再按上述规则转换
+
+**ToString**：
+
+- `undefined` → `"undefined"`
+- `null` → `"null"`
+- `true` → `"true"`
+- 数字 → 十进制字符串（`-0` → `"0"`）
+- Symbol → 抛出 TypeError
+
+**ToBoolean**：
+
+只有以下值转换为 `false`（falsy）：`undefined`、`null`、`-0`、`+0`、`NaN`、`""`（空字符串）。其余所有值均为 truthy，包括 `"0"`、`"false"`、空对象 `{}`、空数组 `[]`。
+
+**抽象相等（==）的转换规则**：
+
+1. 类型相同则按值比较（对象比较引用）。
+2. `null` 与 `undefined` 互等，不与其他值相等。
+3. 数字与字符串比较时，字符串 ToNumber。
+4. 布尔值与任何类型比较时，布尔值 ToNumber。
+5. 对象与原始值比较时，对象 ToPrimitive。
+
+```js
+[] == ![] // true
+// 解析：
+// ![] → false（数组为 truthy，取反为 false）
+// [] == false → [] == 0（false ToNumber 为 0）
+// [] ToPrimitive 为 "" → "" == 0 → 0 == 0 → true
+```
+
+### Symbol 的深层机制
+
+Symbol 值通过 `Symbol()` 工厂函数创建，每次调用返回唯一值。`Symbol.for(key)` 在全局 Symbol 注册表中查找或创建共享 Symbol。Symbol 作为对象键时，不会被 `for...in`、`Object.keys()`、`JSON.stringify()` 枚举，但可通过 `Object.getOwnPropertySymbols()` 和 `Reflect.ownKeys()` 获取。
+
+Well-Known Symbols 是规范预定义的内部 Symbol，用于改变语言内部行为：
+
+- `Symbol.iterator`：定义对象的默认迭代器。
+- `Symbol.toPrimitive`：控制对象到原始值的转换。
+- `Symbol.hasInstance`：重写 `instanceof` 判定逻辑。
+- `Symbol.toStringTag`：控制 `Object.prototype.toString.call` 的返回标签。
+- `Symbol.asyncIterator`：定义异步迭代器（ES2018）。
+
+### BigInt 的运算限制
+
+BigInt 解决了 JavaScript 中超过 `Number.MAX_SAFE_INTEGER`（2^53 - 1）的整数精度丢失问题。BigInt 与 Number 属于不同类型，两者不能直接进行算术运算或比较（`==` 允许，但 `===` 不允许）。BigInt 支持 `+`、`-`、`*`、`**`、`%`，但 `/` 会向零取整，不返回小数。`Math` 对象的方法不接受 BigInt。
+
+## 用法
+
+```js
+// typeof 的精确使用
+function getType(value) {
+  if (value === null) return 'null';
+  const base = typeof value;
+  if (base !== 'object') return base;
+  return Object.prototype.toString.call(value).slice(8, -1).toLowerCase();
+}
+
+getType([]);        // 'array'
+getType({});        // 'object'
+getType(/abc/);     // 'regexp'
+getType(new Date()); // 'date'
+
+// Symbol 作为私有属性的模拟
+const _private = Symbol('private');
+class Counter {
+  constructor() {
+    this[_private] = 0;
+  }
+  increment() {
+    return ++this[_private];
+  }
+}
+
+// BigInt 的安全整数运算
+const max = 9007199254740991n; // Number.MAX_SAFE_INTEGER
+const result = max * 2n + 1n;  // 不会丢失精度
+// result === 18014398509481983n
+```
+
+## 实践
+
+### 防御性编程中的类型检查
+
+在接收外部数据（API 响应、URL 参数、localStorage）时，不能依赖隐式转换的"便利"，应显式校验：
+
+```js
+function parsePort(input) {
+  const num = Number(input);
+  if (!Number.isInteger(num) || num < 0 || num > 65535) {
+    throw new RangeError('Invalid port number');
+  }
+  return num;
+}
+```
+
+### 避免隐式转换陷阱
+
+团队代码规范中应强制使用严格相等 `===` 和 `!==`，禁用 `==`（除 `x == null` 这种同时检查 `null` 和 `undefined` 的惯用法外）。ESLint 的 `eqeqeq` 规则可自动化此约束。
+
+### 性能考量
+
+V8 引擎对隐藏类（Hidden Class）和内联缓存（Inline Cache）的优化高度依赖对象结构的稳定性。在热点代码中动态增删属性、或混用不同类型的值作为对象属性值，会导致引擎撤销优化（deopt）。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| `typeof null === 'object'` | 误判 null 为对象 | 使用 `value === null` 做精确判断 |
+| `[] + []` 或 `[] + {}` | 得到空字符串或 `"[object Object]"` | 避免对对象使用 `+` 运算符；显式调用 `toString()` 或 `join()` |
+| `Number([])` 为 0，`Number({})` 为 NaN | 数组和对象的数值转换不一致 | 显式转换前判断类型，不依赖隐式规则 |
+| `new Boolean(false)` 为 truthy | 包装对象永远 truthy | 永远不要使用原始包装对象的构造函数 |
+| BigInt 与 Number 混用 `+` | 抛出 TypeError | 统一类型后再运算，或显式转换 |
+| `NaN === NaN` 为 false | 无法直接判断 NaN | 使用 `Number.isNaN()`（ES6）或 `Object.is()` |
+
+## 测验
+
+<Quiz
+  question="以下表达式的结果是什么？`typeof NaN`"
+  options={['"nan"', '"number"', '"undefined"', '"object"']}
+  correctIndex={1}
+  explanation="NaN 是 IEEE 754 定义的特殊数值，typeof NaN 返回 'number'。判断 NaN 应使用 Number.isNaN()。"
+/>
+
+<Quiz
+  question="`0.1 + 0.2 === 0.3` 的结果是什么？为什么？"
+  options={["true，因为浮点数精度足够", "false，因为二进制浮点数无法精确表示某些十进制小数", "true，引擎会自动修正", "false，因为 Number 类型溢出"]}
+  correctIndex={1}
+  explanation="0.1 和 0.2 在二进制浮点数中都是无限循环小数，存储时被截断，相加后的结果存在舍入误差，不等于精确存储的 0.3。比较浮点数应使用容差范围，如 Math.abs(a - b) < Number.EPSILON。"
+/>

@@ -1,0 +1,316 @@
+---
+title: "21.1 资源优先级：preload / prefetch / preconnect"
+description: "深入解析资源优先级提示的原理与实战：preload、prefetch、preconnect、dns-prefetch、modulepreload 的浏览器内部机制与最佳实践"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 21 章 加载性能优化"
+section: "21.1"
+tags: ["preload", "prefetch", "preconnect", "dns-prefetch", "modulepreload", "资源优先级"]
+difficulty: "进阶"
+prerequisites: ["20.2-core-web-vitals"]
+related: ["20.2-core-web-vitals", "21.2-code-optimization", "21.3-image-optimization", "21.6-caching"]
+crossRefs: ["20.2-core-web-vitals.mdx", "21.2-code-optimization.mdx", "21.3-image-optimization.mdx", "21.6-caching.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+资源优先级提示（Resource Hints）是一组 HTML 声明式机制，允许开发者向浏览器传达资源的相对重要性、预期使用时机和外部域的连接需求。这些提示不改变语义，但深刻影响浏览器的资源调度策略、网络连接管理和渲染流水线行为。
+
+### 浏览器资源调度模型
+
+现代浏览器使用**优先级队列（Priority Queue）**管理资源加载。每个资源请求被分配一个优先级（Priority），范围从 Highest 到 Lowest。优先级由以下因素共同决定：
+
+1. **资源类型**：CSS 和同步 JavaScript 通常为 Highest；图片为 Low 或 Lowest；异步脚本为 Medium
+2. **文档位置**：`<head>` 中的资源通常比 `<body>` 底部的资源优先级高
+3. **渲染阻塞性**：阻塞渲染的资源自动获得最高优先级
+4. **开发者提示**：`preload`、`fetchpriority` 等显式提示可覆盖默认优先级
+
+浏览器在 HTTP/2 和 HTTP/3 环境下通过**流优先级（Stream Prioritization）**或**优先级帧（Priority Frames）**将这些优先级传递给服务器，指导服务器的响应顺序和带宽分配。
+
+### preload：当前导航的必需资源
+
+`preload` 声明当前页面**必定需要**的资源，且希望浏览器**尽快开始下载**。它不改变资源的执行时机，仅改变发现（Discovery）和下载（Download）的时机。
+
+**浏览器内部机制：**
+
+当解析器遇到 `<link rel="preload">` 时，浏览器立即创建一个高优先级请求，绕过正常的 HTML 解析依赖链。例如，若 CSS 中通过 `@font-face` 引用了一个字体文件，浏览器需要：解析 HTML -> 下载 CSS -> 解析 CSS -> 发现字体 -> 下载字体。`preload` 可将字体下载提前到 HTML 解析阶段。
+
+关键约束：`preload` 必须与资源的**最终使用类型**匹配。`as="script"` 的资源最终必须作为脚本使用，否则浏览器会下载但不使用，并控制台警告。这是因为 `as` 属性决定了请求的优先级、CORS 模式、Accept 头内容和资源是否进入正确的缓存分区。
+
+### prefetch：未来导航的预期资源
+
+`prefetch` 声明**下一页可能使用**的资源。浏览器在**当前页面空闲时**以最低优先级下载这些资源，并将其存入 HTTP 缓存（Disk Cache）。当用户导航到目标页面时，若缓存未过期，资源可直接从磁盘读取。
+
+**浏览器内部机制：**
+
+`prefetch` 请求使用 `Purpose: prefetch` HTTP 头，服务器可据此返回简化响应。浏览器以 Lowest 优先级发起请求，仅在当前页面无其他高优先级请求且带宽空闲时执行下载。
+
+`prefetch` 的资源存储在标准的 HTTP 缓存中，受 `Cache-Control` 头控制。这意味着：若目标页面设置了 `Cache-Control: no-store`，`prefetch` 的资源在导航后可能无法复用。
+
+### preconnect：预先建立连接
+
+`preconnect` 指示浏览器预先完成到目标域名的 DNS 查询、TCP 握手和 TLS 协商。当后续请求真正发起时，可节省 100~800ms 的连接建立时间。
+
+**连接建立的时间成本（典型值）：**
+
+| 阶段 | HTTP/1.1 | HTTP/2 | HTTP/3 |
+|------|----------|--------|--------|
+| DNS 查询 | 20~120ms | 20~120ms | 20~120ms |
+| TCP 握手 | 20~80ms | 20~80ms | 0ms（基于 UDP） |
+| TLS 1.2 握手 | 80~200ms | 80~200ms | 0ms（QUIC 内置） |
+| TLS 1.3 握手 | 20~80ms | 20~80ms | 0ms |
+| **总计** | **120~400ms** | **120~400ms** | **20~120ms** |
+
+`preconnect` 对使用多个第三方域名的页面（如 Google Fonts、Analytics、CDN 图片）效果尤为显著。
+
+### dns-prefetch：轻量级 DNS 预解析
+
+`dns-prefetch` 仅执行 DNS 查询，不建立 TCP/TLS 连接。它比 `preconnect` 更轻量，适用于"可能用到但不确定"的域名。浏览器通常在空闲时执行 DNS 预解析，对当前页面性能影响极小。
+
+### modulepreload：ES Module 图的预加载
+
+`modulepreload` 是 `preload` 的特化版本，专用于 ES Module。它不仅下载模块文件，还**解析模块依赖图**，递归预加载静态 `import` 的深层依赖。这对于使用原生 ES Module（无打包器）的应用至关重要。
+
+## 用法
+
+### 基础用法示例
+
+```html
+<!-- preload：预加载首屏关键字体 -->
+<link rel="preload" href="/fonts/Inter-Bold.woff2" as="font" type="font/woff2" crossorigin>
+
+<!-- preload：预加载 LCP 图片 -->
+<link rel="preload" href="/images/hero.avif" as="image" type="image/avif"
+      imagesrcset="/images/hero-400.avif 400w, /images/hero-800.avif 800w"
+      imagesizes="100vw">
+
+<!-- preload：预加载关键 CSS（谨慎使用，优先内联） -->
+<link rel="preload" href="/critical.css" as="style" onload="this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="/critical.css"></noscript>
+
+<!-- prefetch：预加载下一页的核心 JS chunk -->
+<link rel="prefetch" href="/chunks/product-detail.[hash].js">      
+
+<!-- preconnect：预先连接到第三方 CDN -->
+<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+
+<!-- dns-prefetch：轻量级预解析可能的分析域名 -->
+<link rel="dns-prefetch" href="https://analytics.example.com">
+
+<!-- modulepreload：预加载 ES Module 入口及其依赖 -->
+<link rel="modulepreload" href="/app.js">
+<link rel="modulepreload" href="/shared-utils.js">
+```
+
+### 动态注入 preload（基于路由）
+
+```javascript
+// React Router 中根据当前路由预加载下一页资源
+import { useLocation, useMatches } from 'react-router-dom';
+import { useEffect } from 'react';
+
+function usePrefetchNextRoute() {
+  const matches = useMatches();
+  const location = useLocation();
+
+  useEffect(() => {
+    // 获取当前路由句柄中定义的 prefetch 资源
+    const currentMatch = matches[matches.length - 1];
+    const prefetchResources = currentMatch?.handle?.prefetch;
+
+    if (prefetchResources) {
+      prefetchResources.forEach(href => {
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.href = href;
+        document.head.appendChild(link);
+      });
+    }
+  }, [location.pathname, matches]);
+}
+
+// 路由配置
+const routes = [
+  {
+    path: '/products',
+    element: <ProductList />,
+    handle: {
+      prefetch: ['/chunks/product-detail.[hash].js']
+    }
+  },
+  {
+    path: '/products/:id',
+    element: <ProductDetail />,
+  }
+];
+```
+
+### Webpack/Vite 中的资源预加载集成
+
+```javascript
+// webpack.config.js - 使用 @vue/preload-webpack-plugin 或类似插件
+const PreloadWebpackPlugin = require('@vue/preload-webpack-plugin');
+
+module.exports = {
+  plugins: [
+    new PreloadWebpackPlugin({
+      rel: 'preload',
+      as(entry) {
+        if (/\.css$/.test(entry)) return 'style';
+        if (/\.woff2$/.test(entry)) return 'font';
+        if (/\.(png|jpe?g|gif|webp|avif)$/.test(entry)) return 'image';
+        return 'script';
+      },
+      // 只预加载首屏相关的 chunk
+      include: 'initial',
+    }),
+    // 预取异步 chunk
+    new PreloadWebpackPlugin({
+      rel: 'prefetch',
+      include: 'asyncChunks',
+    }),
+  ],
+};
+```
+
+```javascript
+// vite.config.js - Vite 内置支持
+export default {
+  build: {
+    // Vite 自动为动态导入生成 prefetch 提示
+    // 可通过 renderDynamicImport 自定义
+    rollupOptions: {
+      output: {
+        // 手动控制 chunk 的 preload/prefetch
+        manualChunks(id) {
+          if (id.includes('node_modules/three')) return 'three';
+          if (id.includes('node_modules/lodash')) return 'lodash';
+        },
+      },
+    },
+  },
+  // Vite 插件：为关键资源添加 preload
+  plugins: [
+    {
+      name: 'html-transform',
+      transformIndexHtml(html) {
+        return html.replace(
+          '</head>',
+          `<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+           <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+           </head>`
+        );
+      }
+    }
+  ]
+};
+```
+
+### 使用 fetchpriority 微调资源优先级
+
+Chrome 102+ 支持 `fetchpriority` 属性，允许在默认优先级基础上进行微调：
+
+```html
+<!-- 提升 LCP 图片的优先级 -->
+<img src="hero.jpg" fetchpriority="high" alt="Hero">
+
+<!-- 降低首屏下方图片的优先级 -->
+<img src="below-fold.jpg" fetchpriority="low" loading="lazy" alt="Below fold">
+
+<!-- 在脚本上使用 -->
+<script src="critical.js" fetchpriority="high"></script>
+<script src="analytics.js" fetchpriority="low" async></script>
+```
+
+```javascript
+// JavaScript 中动态设置 fetchpriority
+fetch('/api/data', { priority: 'low' }); // Chrome 支持
+const img = new Image();
+img.fetchPriority = 'high';
+img.src = '/hero.jpg';
+```
+
+## 实践
+
+### 案例：多域名电商站的连接优化
+
+某电商站使用了以下域名：
+- `example.com`：主站
+- `cdn.example.com`：静态资源
+- `img.example.com`：图片
+- `api.example.com`：API
+- `fonts.gstatic.com`：Google Fonts
+- `connect.facebook.net`：Facebook Pixel
+
+**优化前：** 每个域名的首次请求都需要完整的 DNS+TCP+TLS 握手，首屏 6 个域名的连接建立耗时累计超过 1.5s。
+
+**优化方案：**
+
+```html
+<!-- 在 <head> 最顶部添加 -->
+<link rel="preconnect" href="https://cdn.example.com" crossorigin>
+<link rel="preconnect" href="https://img.example.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<!-- 对不确定是否使用的域名使用 dns-prefetch -->
+<link rel="dns-prefetch" href="https://connect.facebook.net">
+
+<!-- 预加载首屏 LCP 图片 -->
+<link rel="preload" href="https://img.example.com/hero.avif" as="image" type="image/avif" crossorigin>
+
+<!-- 预加载关键字体 -->
+<link rel="preload" href="https://cdn.example.com/fonts/Inter.woff2" as="font" type="font/woff2" crossorigin>
+```
+
+**结果：** TTFB 到 LCP 的时间从 2.1s 降至 1.3s。`preconnect` 节省了约 600ms 的连接建立时间。
+
+### 资源提示使用决策矩阵
+
+| 场景 | 推荐提示 | 原因 |
+|------|----------|------|
+| 首屏 LCP 图片/字体 | `preload` | 绕过解析依赖链，立即下载 |
+| 下一页的核心 JS/CSS | `prefetch` | 空闲时缓存，导航时复用 |
+| 第三方 CDN/字体域名 | `preconnect` | 节省 TCP/TLS 握手时间 |
+| 可能用到的分析/广告域名 | `dns-prefetch` | 轻量级，不浪费连接 |
+| 原生 ES Module 应用 | `modulepreload` | 解析依赖图，递归预加载 |
+| 首屏内多张图片竞争带宽 | `fetchpriority="high/low"` | 微调优先级，确保 LCP 资源优先 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| `preload` 未使用的资源 | `as` 属性与实际使用类型不匹配，或资源最终未被页面使用 | 浪费带宽（可能下载数百 KB 无用数据），控制台报错 |
+| 过度使用 `preconnect` | 对大量域名使用 `preconnect`，每个连接占用内存和 socket 资源 | 浏览器限制并发连接（通常 6~8 个/域名），过度预连接导致有效连接被关闭 |
+| `preload` 阻塞渲染 | 在 `<head>` 中 `preload` 大量非关键资源 | 高优先级请求与关键 CSS/JS 竞争带宽，反而延缓首屏渲染 |
+| `prefetch` 缓存失效 | 目标页面设置了 `Cache-Control: no-cache` 或 Vary 头不匹配 | `prefetch` 下载的资源在导航后无法复用，带宽浪费 |
+| 忽略 CORS 属性 | `preload` 字体/图片时未设置 `crossorigin`，导致双重下载 | 浏览器因 CORS 模式不匹配放弃预加载的资源，重新发起请求 |
+| `preload` CSS 但未应用 | `preload` CSS 后忘记在文档中实际引用 | 资源下载但不使用，浪费带宽 |
+| 在 HTTP/1.1 上滥用资源提示 | HTTP/1.1 的队头阻塞（Head-of-Line Blocking）使多请求并发效果差 | 资源提示的收益在 HTTP/1.1 上远低于 HTTP/2/3，应优先升级协议 |
+
+<Callout type="warning" title="preload 的 CORS 陷阱">
+预加载字体和跨域图片时，`crossorigin` 属性必须存在，即使资源本身不跨域。这是因为字体请求默认使用匿名 CORS 模式，而 `preload` 默认使用 no-cors 模式。若模式不匹配，浏览器会丢弃预加载的资源并重新请求。正确的做法是为所有字体预加载添加 `crossorigin` 属性。
+</Callout>
+
+<Quiz
+  question="`preload` 和 `prefetch` 的核心区别是什么？"
+  options={[
+    "preload 用于 CSS，prefetch 用于 JS",
+    "preload 针对当前导航的高优先级资源，prefetch 针对未来导航的低优先级资源",
+    "preload 是 HTML5 标准，prefetch 是实验性功能",
+    "preload 只下载不缓存，prefetch 只缓存不下载"
+  ]}
+  correctIndex={1}
+  explanation="preload 声明当前页面必需的资源，浏览器以高优先级立即下载；prefetch 声明下一页可能使用的资源，浏览器以最低优先级在空闲时下载并缓存。两者在优先级、时机和目标上都有本质区别。"
+/>
+
+<Quiz
+  question="为什么预加载字体时必须添加 `crossorigin` 属性，即使字体与页面同域？"
+  options={[
+    "这是 HTML 规范的强制要求",
+    "字体请求默认使用匿名 CORS 模式，而 preload 默认使用 no-cors 模式，模式不匹配会导致浏览器丢弃预加载资源",
+    "为了兼容 Safari 浏览器",
+    "因为字体文件总是被视为跨域资源"
+  ]}
+  correctIndex={1}
+  explanation="字体请求（通过 @font-face）默认使用匿名 CORS 模式，而 link rel='preload' 默认使用 no-cors 模式。若 preload 时未指定 crossorigin，浏览器会因模式不匹配而丢弃预加载的资源，导致重复请求。"
+/>

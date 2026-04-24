@@ -1,0 +1,187 @@
+---
+title: "11.6 React 渲染机制：Reconciliation、Diff 算法、Fiber 架构、Render Phase vs Commit Phase"
+description: "Reconciliation、Diff 算法、Fiber 架构、Render Phase vs Commit Phase"
+volume: "卷四：框架与状态管理"
+chapter: "第 11 章 React 原理与生态"
+section: "11.6"
+tags: ["Reconciliation", "Diff", "Fiber", "渲染"]
+difficulty: "基础"
+prerequisites: []
+related: ["11.5-hooks-rules", "11.7-concurrent"]
+crossRefs: ["6.7-async"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+React 的渲染机制经历了从 Stack Reconciler 到 Fiber Reconciler 的彻底重构。Fiber 架构不仅解决了递归渲染不可中断的问题，还为并发特性（Concurrent Features）奠定了基础。
+
+### Reconciliation 与 Diff 算法
+
+当组件状态变化时，React 需要确定如何高效地更新 DOM。这个过程分为两个阶段：
+
+1. **Reconciliation（协调）**：比较新旧两棵虚拟 DOM 树（React Element Tree），计算出差异。
+2. **Commit（提交）**：将差异应用到真实 DOM。
+
+React 的 Diff 算法基于两个关键假设：
+
+1. **不同类型的元素产生不同的树**：当元素类型变化（如 `div` 变为 `span`），React 会销毁旧子树并构建新子树。
+2. **通过 key 属性标识稳定身份**：开发者可以通过 `key` 提示 React 哪些元素在前后渲染中是同一个。
+
+Diff 策略：
+
+- **单节点比较**：先比较 `type`，再比较 `props`。`type` 不同则卸载旧节点、挂载新节点。
+- **子节点列表比较**：采用双端比较（Two-Pointer）算法，时间复杂度为 O(n)。
+- **key 的作用**：带 key 的子节点会被识别为可复用，仅移动位置而非重新创建。
+
+```jsx
+// 无 key：React 无法识别身份，逐个比较可能导致不必要的更新
+<ul>
+  {items.map(item => <li>{item.name}</li>)}
+</ul>
+
+// 有 key：React 可高效复用和重排
+<ul>
+  {items.map(item => <li key={item.id}>{item.name}</li>)}
+</ul>
+```
+
+### Fiber 架构
+
+Fiber 是 React 16 引入的新协调引擎核心数据结构。每个 React 元素对应一个 Fiber 节点，Fiber 节点构成一个链表树结构：
+
+```
+Fiber 节点结构（简化）：
+- type: 组件类型或 DOM 标签
+- key: 元素的 key
+- stateNode: 对应的 DOM 节点或组件实例
+- child: 第一个子 Fiber
+- sibling: 下一个兄弟 Fiber
+- return: 父 Fiber
+- alternate: 当前树与 workInProgress 树之间的对应节点
+- flags: 副作用标记（Placement、Update、Deletion 等）
+```
+
+Fiber 架构的核心改进：
+
+1. **增量渲染（Incremental Rendering）**：将渲染工作拆分为小单元，可暂停和恢复。
+2. **优先级调度**：不同更新可分配不同优先级（如用户输入高优先级，网络请求低优先级）。
+3. **并发模式基础**：Fiber 的双缓冲机制（current tree 与 workInProgress tree）支持并发更新。
+
+### Render Phase vs Commit Phase
+
+React 将更新流程明确分为两个阶段：
+
+**Render Phase（渲染阶段）**：
+
+- 纯计算阶段，可异步、可中断、可重启。
+- 调用组件函数，构建 Fiber 树，标记副作用（flags）。
+- 不会触及真实 DOM，因此即使多次中断和重启也不会产生不一致的 UI。
+
+**Commit Phase（提交阶段）**：
+
+- 同步执行，不可中断。
+- 遍历 effect 链表，执行 DOM 操作（插入、更新、删除）。
+- 调用生命周期方法（`componentDidMount`、`componentDidUpdate`）和 `useLayoutEffect`。
+- 触发 `useEffect` 的调度（在浏览器绘制后异步执行）。
+
+<Callout type="info" title="Render 可以执行多次">
+在并发模式下，React 可能多次执行 Render Phase 而不进入 Commit Phase（如高优先级更新打断了低优先级更新）。因此，Render Phase 中的代码必须是纯函数，不能有副作用。
+</Callout>
+
+### React.memo 与 shouldComponentUpdate
+
+`React.memo` 是函数组件的 `PureComponent` 等价物，它通过浅比较 props 来决定是否跳过重新渲染：
+
+```jsx
+const ExpensiveComponent = React.memo(function MyComponent({ data, onClick }) {
+  // 仅当 data 或 onClick 引用变化时才重新渲染
+  return <div onClick={onClick}>{data}</div>;
+});
+```
+
+可传入自定义比较函数：
+
+```jsx
+React.memo(MyComponent, (prevProps, nextProps) => {
+  return prevProps.id === nextProps.id; // 返回 true 表示相等，跳过渲染
+});
+```
+
+## 用法
+
+```jsx
+// 使用 React.memo 优化列表项
+const ListItem = React.memo(({ item, onSelect }) => {
+  return <div onClick={() => onSelect(item.id)}>{item.name}</div>;
+});
+
+// 配合 useCallback 稳定回调引用
+function List({ items }) {
+  const [selectedId, setSelectedId] = useState(null);
+
+  const handleSelect = useCallback((id) => {
+    setSelectedId(id);
+  }, []);
+
+  return (
+    <ul>
+      {items.map(item => (
+        <ListItem key={item.id} item={item} onSelect={handleSelect} />
+      ))}
+    </ul>
+  );
+}
+```
+
+## 实践
+
+### 避免 Render Phase 副作用
+
+以下操作属于副作用，必须放在 Commit Phase（useEffect/useLayoutEffect）或事件处理器中：
+
+- 网络请求
+- DOM 手动操作
+- 订阅和取消订阅
+- `console.log`（开发调试除外）
+
+### key 的最佳实践
+
+- 使用数据本身的稳定唯一标识（如数据库 ID）。
+- 避免使用数组索引作为 key（除非列表是静态的、不可排序的）。
+- 同一列表中 key 必须唯一，但不同列表之间可以重复。
+
+### 性能分析
+
+使用 React DevTools Profiler 记录组件渲染时间，识别性能瓶颈：
+
+1. 打开 DevTools 的 Profiler 标签。
+2. 点击 Record，执行需要分析的操作。
+3. 查看火焰图，找出渲染时间过长的组件。
+4. 针对性使用 `React.memo`、`useMemo`、`useCallback` 或重构组件结构。
+
+## 陷阱
+
+| 陷阱 | 现象 | 解决方案 |
+|------|------|---------|
+| 使用索引作为 key | 列表重排后状态错乱、性能下降 | 使用数据唯一 ID |
+| 在 render 中创建新对象/函数 | 子组件 memo 失效 | 使用 useMemo/useCallback 或提取到组件外 |
+| 过度使用 React.memo | 比较开销超过重新渲染收益 | 先用 Profiler 测量，再针对性优化 |
+| 在 render 中修改 ref | 值在并发模式下不确定 | 在 useEffect 或事件处理器中修改 ref |
+| 忽略 key 的变化 | React 复用旧组件实例，导致状态残留 | 使用 key 强制组件重新挂载（如路由切换） |
+
+## 测验
+
+<Quiz
+  question="React 的 Render Phase 和 Commit Phase 的主要区别是什么？"
+  options={["Render Phase 操作 DOM，Commit Phase 计算差异", "Render Phase 可异步中断，Commit Phase 同步执行", "没有区别，是同一个阶段", "Render Phase 只在挂载时执行"]}
+  correctIndex={1}
+  explanation="Render Phase 是纯计算阶段，可以异步、中断和重启，不操作真实 DOM。Commit Phase 是同步执行阶段，负责将变更应用到 DOM，不可中断。"
+/>
+
+<Quiz
+  question="为什么 React 推荐在列表中使用稳定的 key，而不是数组索引？"
+  options={["key 影响样式", "索引在列表重排后会导致组件身份识别错误", "key 是语法要求", "索引会导致内存泄漏"]}
+  correctIndex={1}
+  explanation="当列表重排时，使用索引作为 key 会让 React 认为同一位置的元素是同一个组件，导致状态错乱和不必要的 DOM 更新。稳定的 key 帮助 React 正确识别元素身份，实现高效的复用和重排。"
+/>

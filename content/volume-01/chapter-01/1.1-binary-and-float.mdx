@@ -1,0 +1,246 @@
+---
+title: "1.1 数据在计算机中的表示：二进制、十六进制、浮点数（IEEE 754）、大端与小端"
+description: "深入理解计算机底层数据的表示方式，包括二进制与十六进制的转换原理、IEEE 754 浮点数标准的内部结构、精度问题，以及大端序与小端序对网络通信和文件格式的影响。"
+volume: "卷一：计算机科学与网络基础"
+chapter: "第 1 章 计算机系统基础"
+section: "1.1"
+tags: ["二进制", "十六进制", "IEEE754", "字节序", "进制转换", "浮点数精度", "补码", "数据表示"]
+difficulty: "基础"
+prerequisites: []
+related:
+  - { title: "1.2 CPU 架构与缓存层次", slug: "volume-01/chapter-01/1.2-cpu-cache" }
+  - { title: "1.3 内存管理：虚拟内存、分页与分段、栈与堆、V8 的堆结构", slug: "volume-01/chapter-01/1.3-memory-management" }
+crossRefs:
+  - { title: "WebSocket 二进制帧解析", slug: "volume-01/chapter-02/2.7-websocket" }
+  - { title: "ArrayBuffer 与 TypedArray", slug: "volume-02/chapter-06/6.4-arraybuffer" }
+  - { title: "ProtoBuf 与二进制序列化", slug: "volume-01/chapter-02/2.6-protobuf" }
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+### 二进制与十六进制：计算机的母语
+
+现代数字计算机的物理基础是半导体开关电路，晶体管只有导通与截止两种状态，分别对应高电平（通常表示 1）和低电平（通常表示 0）。因此，**二进制（Binary）** 是计算机唯一能直接识别和处理的数制。所有的高级数据类型——无论是字符串、图像、音频还是复杂的对象结构——在底层最终都会被编码为二进制序列。
+
+在工程实践中，直接使用一长串 0 和 1 进行读写极易出错且效率低下。由于 $2^4 = 16$，每 4 位二进制数恰好可以唯一映射到一位 **十六进制（Hexadecimal）** 数，这使得十六进制成为二进制最紧凑的人类可读表示形式。例如，一个 32 位二进制数 `1111 0000 1010 1100` 可以简洁地写作 `0xF0AC`。这种 4 位一组的对应关系是前端开发者在调试网络包、内存地址、颜色值（如 CSS 的 `#FF5733`）时频繁使用十六进制的根本原因。
+
+### 有符号整数的表示：原码、反码与补码
+
+计算机需要表示负数。最直观的方案是**原码（Sign-Magnitude）**：用最高位作为符号位（0 为正，1 为负），其余位表示绝对值。然而，原码存在两个严重的缺陷：一是存在 `+0`（`0000 0000`）和 `-0`（`1000 0000`）两种零的表示，造成歧义；二是硬件电路实现加减法时需要额外的逻辑来判断操作数的符号，导致运算器设计复杂。
+
+**补码（Two's Complement）** 解决了上述所有问题，成为现代计算机表示有符号整数的标准方案。一个 $n$ 位二进制数的补码定义为：正数的补码是其本身；负数的补码是其对应正数的二进制表示按位取反（得到反码）后加 1。从数学上看，$n$ 位补码表示的取值范围是 $[-2^{n-1}, 2^{n-1}-1]$。补码的核心优势在于，减法可以统一转换为加法运算：$A - B = A + (-B)_{补码}$。这使得 CPU 中的算术逻辑单元（ALU）无需设计独立的减法器，极大地简化了硬件架构。对于前端开发者而言，理解补码有助于解释 JavaScript 中位运算（如 `~`、`>>>`）的怪异行为。
+
+### IEEE 754 浮点数标准
+
+为了在不同硬件和编程语言之间统一实数的表示，IEEE 于 1985 年发布了 **IEEE 754 标准**，并在 2008 年进行了修订。该标准定义了浮点数的存储格式、舍入规则以及特殊值（如无穷大、NaN）的处理方式。
+
+一个 IEEE 754 浮点数由三个部分组成：
+1.  **符号位（Sign, S）**：1 位，0 表示正数，1 表示负数。
+2.  **指数位（Exponent, E）**：采用**移码（Bias）**表示。对于 32 位单精度浮点数（`float`），指数位宽为 8 位，偏移量（Bias）为 127。实际指数 $e = E - 127$。移码的设计使得指数的比较可以当作无符号整数进行，简化了硬件比较电路。
+3.  **尾数位（Mantissa/Significand, M）**：也称为有效数字位。IEEE 754 规定尾数必须规格化（Normalized），即最高位总是 1（对于非零数）。这个隐含的 1 被称为“隐藏位”（Hidden Bit），因此 23 位的尾数实际提供了 24 位的精度。
+
+其真实值计算公式为：
+$$
+V = (-1)^S \times (1.M)_2 \times 2^{E - Bias}
+$$
+
+**双精度（64 位，`double`）** 是 JavaScript 中 `Number` 类型的唯一底层表示（遵循 IEEE 754-2008 的 binary64 格式）。它使用 1 位符号、11 位指数（Bias 为 1023）和 52 位尾数（加隐藏位共 53 位精度）。这意味着 JavaScript 能够精确表示的整数范围是 $[-2^{53}, 2^{53}]$，即 `Number.MAX_SAFE_INTEGER`（`9007199254740991`）。超出此范围的整数将丢失精度，这也是 `9007199254740992 === 9007199254740993` 在 JavaScript 中返回 `true` 的根本原因。
+
+**特殊值的处理**：
+- 当指数位全为 0 且尾数位全为 0 时，表示 `±0`。
+- 当指数位全为 1 且尾数位全为 0 时，表示 `±Infinity`。
+- 当指数位全为 1 且尾数位不全为 0 时，表示 **NaN（Not-a-Number）**。NaN 的尾数非零部分甚至可以用来携带额外的诊断信息（称为 Payload）。
+
+### 大端序与小端序
+
+当数据宽度超过 1 字节（如 32 位整数占 4 字节）时，就涉及到多字节数据在内存中的存储顺序问题。
+
+- **大端序（Big-Endian）**：高位字节存放在低地址处。这种存储方式符合人类从左到右的阅读习惯，因此也被称为“网络字节序”（Network Byte Order）。TCP/IP 协议栈以及绝大多数网络协议都采用大端序。
+- **小端序（Little-Endian）**：低位字节存放在低地址处。Intel x86 和 x86-64 架构的 CPU 采用小端序。其历史优势在于，对于从低地址开始的逐字节读取，可以自然地先获得低位的有效数据，在早期硬件设计中简化了某些运算逻辑。
+
+前端开发者在处理 `ArrayBuffer`、`DataView` 以及通过 WebSocket 接收二进制数据时，必须明确当前数据的字节序。`DataView` API 的设计正是为了解决这一问题，它允许开发者在读写时显式指定 `littleEndian` 参数。
+
+## 用法
+
+### 进制转换与位运算
+
+```javascript
+// 十进制与十六进制、二进制的相互转换
+const num = 255;
+console.log(num.toString(16));   // "ff"
+console.log(num.toString(2));    // "11111111"
+console.log(parseInt("ff", 16)); // 255
+console.log(parseInt("11111111", 2)); // 255
+
+// 使用二进制前缀（ES6）
+const flags = 0b1010; // 十进制 10
+const mask  = 0x0F;   // 十进制 15
+
+// 位运算：常用于权限控制（ACL）
+const PERMISSION_READ    = 0b0001; // 1
+const PERMISSION_WRITE   = 0b0010; // 2
+const PERMISSION_EXECUTE = 0b0100; // 4
+
+let userPermission = PERMISSION_READ | PERMISSION_WRITE; // 3
+console.log((userPermission & PERMISSION_READ) !== 0);    // true，检查读权限
+console.log((userPermission & PERMISSION_EXECUTE) !== 0); // false
+
+// 使用无符号右移（>>>）处理补码逻辑
+// JavaScript 的 Number 是 64 位浮点数，但位运算会将其强制转换为 32 位有符号整数
+const signed = -1;
+console.log(signed >>> 0); // 4294967295，将 -1 的 32 位补码视为无符号整数
+```
+
+### IEEE 754 精度问题的显式处理
+
+```javascript
+// 经典的浮点数精度陷阱
+console.log(0.1 + 0.2); // 0.30000000000000004
+console.log(0.1 + 0.2 === 0.3); // false
+
+// 原因：0.1 在二进制中是无限循环小数，存储时发生截断
+// 0.1 (十进制) ≈ 0.0001100110011... (二进制)
+
+// 解决方案 1：使用误差范围（Epsilon）进行比较
+function floatEqual(a, b, epsilon = Number.EPSILON) {
+  return Math.abs(a - b) < epsilon;
+}
+console.log(floatEqual(0.1 + 0.2, 0.3)); // true
+
+// 解决方案 2：转为整数运算（适用于货币计算）
+function addCurrency(a, b) {
+  // 假设货币单位为分，避免小数
+  return (a * 100 + b * 100) / 100;
+}
+console.log(addCurrency(0.1, 0.2)); // 0.3
+
+// 解决方案 3：使用 BigInt 处理超大整数
+const huge = 9007199254740993n;
+console.log(huge === 9007199254740993n); // true
+// 注意：BigInt 不能与 Number 混合运算
+```
+
+### DataView 与字节序控制
+
+```javascript
+// 创建一个 4 字节的 ArrayBuffer
+const buffer = new ArrayBuffer(4);
+const view = new DataView(buffer);
+
+// 以大端序写入一个 16 位无符号整数
+view.setUint16(0, 0x1234, false); // false = big-endian
+console.log(new Uint8Array(buffer)); // Uint8Array [18, 52, 0, 0]
+
+// 以小端序写入（x86 架构内存中的常见形式）
+view.setUint16(2, 0x1234, true); // true = little-endian
+console.log(new Uint8Array(buffer)); // Uint8Array [18, 52, 52, 18]
+
+// 读取网络数据包（大端序）时
+function parseIPv4(octets) {
+  // IP 地址通常以 4 个字节的大端序表示
+  const view = new DataView(octets.buffer, octets.byteOffset, 4);
+  return [
+    view.getUint8(0),
+    view.getUint8(1),
+    view.getUint8(2),
+    view.getUint8(3),
+  ].join('.');
+}
+```
+
+## 实践
+
+### 场景一：前端颜色值的进制操作
+
+在 CSS 和 Canvas 开发中，颜色通常以十六进制或 RGBA 表示。理解位运算可以高效地在不同格式间转换。
+
+```typescript
+// 将 #RRGGBB 字符串解析为 RGB 对象
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const val = parseInt(hex.replace('#', ''), 16);
+  return {
+    r: (val >> 16) & 0xFF, // 右移 16 位后与 0xFF 取低 8 位
+    g: (val >> 8)  & 0xFF,
+    b: val & 0xFF,
+  };
+}
+
+// 将 RGB 对象打包为 32 位整数（常用于 Canvas ImageData）
+function rgbToInt(r: number, g: number, b: number, a: number = 255): number {
+  // Canvas 的 ImageData 通常使用小端序的 ABGR 或 ARGB
+  return (a << 24) | (r << 16) | (g << 8) | b;
+}
+```
+
+### 场景二：处理 WebSocket 二进制帧
+
+WebSocket 协议支持传输二进制帧（`ArrayBuffer` 或 `Blob`）。在解析自定义二进制协议时，必须严格遵循协议规定的字节序。
+
+```typescript
+// 假设协议头定义如下（大端序）：
+// | 2 bytes | 4 bytes  | N bytes |
+// |  type   | payload_len | payload |
+function parseCustomPacket(buffer: ArrayBuffer): { type: number; payload: Uint8Array } {
+  const view = new DataView(buffer);
+  const type = view.getUint16(0, false); // 大端序读取 type
+  const payloadLen = view.getUint32(2, false); // 大端序读取长度
+  const payload = new Uint8Array(buffer, 6, payloadLen);
+  return { type, payload };
+}
+```
+
+### 场景三：金融系统中的精度安全
+
+在电商或金融前端应用中，任何涉及金额的计算都不能直接使用 JavaScript 的浮点数。业界最佳实践是：**在数据层和传输层始终以“分”或更小的整数单位进行处理**，仅在最终展示层转换为“元”并格式化。
+
+```typescript
+// 反模式：直接操作元
+const total = 0.1 + 0.2; // 危险！
+
+// 正模式：全程使用整数分
+const priceInCents = 1999; // 19.99 元
+const quantity = 3;
+const totalInCents = priceInCents * quantity; // 5997 分
+const display = (totalInCents / 100).toFixed(2); // "59.97"
+```
+
+## 陷阱
+
+| 陷阱描述 | 典型表现 | 解决方案 |
+|---------|---------|---------|
+| **浮点数相等性判断** | `0.1 + 0.2 === 0.3` 返回 `false` | 使用 `Math.abs(a - b) < Number.EPSILON` 进行比较，或转为整数运算 |
+| **parseInt 隐式进制** | `parseInt("08")` 在某些旧引擎中被当作八进制解析 | 始终显式传入第二个参数：`parseInt("08", 10)` |
+| **位运算的 32 位截断** | `0xFFFFFFFF | 0` 结果为 `-1`（有符号） | 若需无符号结果，使用 `>>>` 0 转换：`((0xFFFFFFFF | 0) >>> 0)` 得 `4294967295` |
+| **大整数精度丢失** | `9007199254740992 + 1 === 9007199254740992` 为 `true` | 使用 `BigInt` 类型，或在服务端处理大整数运算 |
+| **字节序假设错误** | 在 x86 机器上直接使用 `Uint32Array` 读取网络数据，导致大小端混乱 | 始终使用 `DataView` 并显式指定 `littleEndian` 参数 |
+| **NaN 的不等性** | `NaN === NaN` 为 `false`，且 `NaN > 0` 和 `NaN < 0` 均为 `false` | 使用 `Number.isNaN()` 判断，而非 `===` |
+| **toFixed 的银行家舍入** | `(2.55).toFixed(1)` 可能输出 `"2.5"` 而非 `"2.6"`（取决于引擎实现） | 对关键业务舍入逻辑，使用自定义的十进制舍入函数或专业库（如 `decimal.js`） |
+
+<Callout type="warning" title="浮点数比较的深层原理">
+`Number.EPSILON` 表示 1 与大于 1 的最小可表示浮点数之间的差值（约 $2.22 \times 10^{-16}$）。在进行浮点数比较时，Epsilon 的选取应与参与运算的数值量级相匹配。对于极大或极小的数，直接使用 `Number.EPSILON` 可能并不合适。
+</Callout>
+
+<Quiz
+  question="在 JavaScript 中，为什么 `0.1 + 0.2 !== 0.3`？"
+  options={[
+    "JavaScript 引擎存在 Bug",
+    "0.1 和 0.2 在二进制浮点数中无法被精确表示，运算后产生累积舍入误差",
+    "Number 类型使用 32 位整数存储",
+    `+ 运算符对小于 1 的数有特殊处理逻辑`
+  ]}
+  correctIndex={1}
+  explanation="JavaScript 的 Number 类型遵循 IEEE 754 双精度标准。0.1 和 0.2 在二进制下是无限循环小数，存储时尾数部分被截断，导致存在微小的表示误差。相加后误差累积，结果略大于 0.3。"
+/>
+
+<Quiz
+  question="在网络协议解析中，读取一个 32 位无符号整数（大端序）时，最推荐的做法是？"
+  options={[
+    "使用 Uint32Array 直接读取，因为所有系统都使用大端序",
+    "使用 DataView.getUint32(offset, false)",
+    "逐字节读取后手动进行位运算拼接",
+    "依赖 JSON 序列化自动处理字节序"
+  ]}
+  correctIndex={1}
+  explanation="`DataView` 是唯一允许在读写时显式指定字节序的 API。`Uint32Array` 的字节序取决于运行平台的 CPU 架构（x86 为小端序），不能直接用于解析网络数据。"
+/>

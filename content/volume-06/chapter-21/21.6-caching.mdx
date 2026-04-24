@@ -1,0 +1,383 @@
+---
+title: "21.6 缓存策略"
+description: "深入解析 HTTP 缓存、Service Worker 离线缓存、CDN 缓存策略与缓存失效机制的原理与实战"
+volume: "卷六：性能优化与可观测性"
+chapter: "第 21 章 加载性能优化"
+section: "21.6"
+tags: ["缓存", "Cache", "Service Worker", "PWA", "HTTP Cache", "CDN 缓存"]
+difficulty: "进阶"
+prerequisites: ["21.5-network-optimization"]
+related: ["21.2-code-optimization", "21.5-network-optimization", "21.7-rendering-modes"]
+crossRefs: ["21.2-code-optimization.mdx", "21.5-network-optimization.mdx", "21.7-rendering-modes.mdx"]
+lastUpdated: "2026-04-24"
+---
+
+## 原理
+
+缓存是性能优化中最具杠杆效应的手段——一次网络请求可能需要数百毫秒，而从本地缓存读取只需数毫秒。Web 缓存体系是一个多层架构，从浏览器内存到 Service Worker 再到 CDN 边缘节点，每一层都有其特定的适用场景和一致性语义。
+
+### HTTP 缓存机制
+
+HTTP 缓存通过 `Cache-Control`、`Expires`、`ETag` 和 `Last-Modified` 等头部控制。浏览器在发起请求前，首先检查本地缓存是否可用。
+
+**强缓存（Strong Validation）：**
+
+强缓存下，浏览器完全不发送网络请求，直接使用本地缓存副本。
+
+- `Cache-Control: max-age=3600`：资源在 3600 秒内有效
+- `Cache-Control: immutable`：资源永远不会改变（配合长期 max-age 使用）
+- `Expires: Wed, 21 Oct 2026 07:28:00 GMT`：绝对过期时间（已被 max-age 取代）
+
+**协商缓存（Weak Validation）：**
+
+当强缓存过期后，浏览器携带缓存验证信息发起条件请求：
+
+- `ETag: "33a64df5"` + `If-None-Match: "33a64df5"`：服务器比较 ETag，若匹配返回 304 Not Modified
+- `Last-Modified: Wed, 21 Oct 2025 07:28:00 GMT` + `If-Modified-Since`：基于修改时间的验证，精度仅为秒级
+
+ETag 比 Last-Modified 更精确，因为它可以检测内容级别的变化（如服务器重启后文件内容未变但时间戳更新）。
+
+**Cache-Control 指令的完整语义：**
+
+| 指令 | 含义 | 典型使用场景 |
+|------|------|-------------|
+| `no-store` | 禁止任何缓存 | 敏感数据、实时交易 |
+| `no-cache` | 可以缓存，但必须重新验证 | 频繁更新的 API |
+| `max-age=0` | 立即过期，等价于 no-cache | 开发调试 |
+| `private` | 仅浏览器可缓存，CDN 不可 | 用户个性化内容 |
+| `public` | 任何缓存都可存储 | 静态资源 |
+| `immutable` | 内容永不变，无需条件请求 | 带 hash 的文件名 |
+| `s-maxage=3600` | CDN/共享缓存的 max-age | 覆盖浏览器缓存策略 |
+| `stale-while-revalidate=86400` | 过期后 24h 内仍可使用旧缓存，同时后台更新 | 非关键实时数据 |
+
+### Service Worker 与离线缓存
+
+Service Worker 是浏览器在后台运行的脚本，可拦截网络请求、管理缓存和实现离线体验。它运行在独立的 Worker 线程，不阻塞主线程。
+
+**Service Worker 的生命周期：**
+
+1. **注册（Register）**：页面调用 `navigator.serviceWorker.register('/sw.js')`
+2. **安装（Install）**：浏览器下载 SW 脚本，触发 `install` 事件。在此阶段预缓存核心资源。
+3. **等待（Waiting）**：若已有激活的 SW，新 SW 进入等待状态，直到所有旧版本页面关闭。
+4. **激活（Activate）**：新 SW 接管页面，触发 `activate` 事件。在此阶段清理旧缓存。
+5. **运行（Fetch）**：SW 拦截页面发出的所有网络请求，决定从缓存读取或转发到网络。
+
+**缓存策略模式：**
+
+| 策略 | 描述 | 适用场景 |
+|------|------|----------|
+| Cache First | 优先读缓存，未命中再请求网络 | 静态资源（JS/CSS/图片） |
+| Network First | 优先请求网络，失败回退缓存 | API 请求、实时数据 |
+| Stale While Revalidate | 立即返回缓存，后台请求网络更新 | 新闻列表、内容页 |
+| Network Only | 只请求网络，不读缓存 | 敏感操作、支付 |
+| Cache Only | 只读缓存，不请求网络 | 离线应用的核心资源 |
+
+### CDN 缓存层级
+
+CDN 缓存通常分为三层：
+
+1. **边缘缓存（Edge Cache）**：最接近用户的节点，TTL 通常较短（分钟级到小时级）
+2. **区域缓存（Regional Cache）**：覆盖较大地理区域，TTL 中等
+3. **源站缓存（Origin Shield）**：位于源站前的专用缓存层，减少源站压力
+
+**缓存键（Cache Key）的构成：**
+
+CDN 根据请求特征生成缓存键，默认通常包含：
+- URL 路径和查询字符串
+- Host 头
+- 部分情况下包含 `Accept-Encoding`
+
+可通过 `Vary` 头或 CDN 配置扩展缓存键，但每增加一个维度都会降低缓存命中率。
+
+## 用法
+
+### Nginx 缓存配置最佳实践
+
+```nginx
+# nginx.conf - 分层缓存策略
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    # 1. HTML 文件：短期缓存 + 协商验证
+    location / {
+        root /var/www/html;
+        try_files $uri $uri/ /index.html;
+
+        add_header Cache-Control "public, max-age=0, must-revalidate";
+        add_header Vary "Accept-Encoding";
+    }
+
+    # 2. 带 hash 的静态资源：长期强缓存
+    location ~* \.[a-f0-9]{8,}\.(js|css|woff2|webp|avif)$ {
+        root /var/www/html;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        add_header Vary "Accept-Encoding";
+        access_log off;
+    }
+
+    # 3. 图片资源：中期缓存
+    location ~* \.(jpg|jpeg|png|gif|svg)$ {
+        root /var/www/html;
+        expires 7d;
+        add_header Cache-Control "public";
+        access_log off;
+    }
+
+    # 4. API 响应：协商缓存
+    location /api/ {
+        proxy_pass http://backend;
+        proxy_cache_bypass $http_pragma;
+        add_header Cache-Control "private, no-cache";
+        add_header ETag $upstream_http_etag;
+    }
+}
+```
+
+### Service Worker 完整实现（Workbox）
+
+```bash
+npm install workbox-build workbox-window
+```
+
+```javascript
+// sw.js - Service Worker 手动实现
+const CACHE_NAME = 'app-v1';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/static/main.[hash].js',
+  '/static/main.[hash].css',
+  '/offline.html',
+];
+
+// 安装阶段：预缓存核心资源
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
+  );
+  self.skipWaiting(); // 立即激活
+});
+
+// 激活阶段：清理旧缓存
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    })
+  );
+  self.clients.claim(); // 立即接管所有页面
+});
+
+// 拦截请求
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // 策略1：静态资源 - Cache First
+  if (isStaticAsset(url)) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  // 策略2：API - Network First with timeout
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(networkFirst(request, 3000));
+    return;
+  }
+
+  // 策略3：导航请求 - Stale While Revalidate
+  if (request.mode === 'navigate') {
+    event.respondWith(staleWhileRevalidate(request));
+    return;
+  }
+});
+
+// Cache First 策略
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  cache.put(request, response.clone());
+  return response;
+}
+
+// Network First with timeout 策略
+async function networkFirst(request, timeoutMs) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const networkPromise = fetch(request);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout')), timeoutMs)
+    );
+
+    const response = await Promise.race([networkPromise, timeoutPromise]);
+    cache.put(request, response.clone());
+    return response;
+  } catch (err) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw err;
+  }
+}
+
+// Stale While Revalidate 策略
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+
+  const networkPromise = fetch(request)
+    .then((response) => {
+      cache.put(request, response.clone());
+      return response;
+    })
+    .catch(() => cached);
+
+  return cached || networkPromise;
+}
+
+function isStaticAsset(url) {
+  return /\.(js|css|png|jpg|jpeg|gif|webp|avif|woff2|svg)$/.test(url.pathname);
+}
+```
+
+```javascript
+// main.js - 注册 Service Worker
+import { Workbox } from 'workbox-window';
+
+if ('serviceWorker' in navigator) {
+  const wb = new Workbox('/sw.js');
+
+  // 监听更新
+  wb.addEventListener('waiting', () => {
+    // 提示用户有新版本
+    showUpdateNotification(() => wb.messageSkipWaiting());
+  });
+
+  // 更新完成后刷新页面
+  wb.addEventListener('controlling', () => {
+    window.location.reload();
+  });
+
+  wb.register();
+}
+```
+
+### 使用 Workbox 构建工具生成 SW
+
+```javascript
+// workbox-config.js
+module.exports = {
+  globDirectory: 'dist/',
+  globPatterns: ['**/*.{html,js,css,png,webp,avif,woff2}'],
+  swDest: 'dist/sw.js',
+  runtimeCaching: [
+    {
+      urlPattern: /\/api\//,
+      handler: 'NetworkFirst',
+      options: {
+        cacheName: 'api-cache',
+        expiration: { maxEntries: 100, maxAgeSeconds: 3600 },
+      },
+    },
+    {
+      urlPattern: /\.(?:png|jpg|jpeg|gif|webp|avif)$/,
+      handler: 'CacheFirst',
+      options: {
+        cacheName: 'image-cache',
+        expiration: { maxEntries: 200, maxAgeSeconds: 86400 * 30 },
+      },
+    },
+  ],
+};
+```
+
+```bash
+# 生成 Service Worker
+npx workbox-cli generateSW workbox-config.js
+```
+
+## 实践
+
+### 案例：PWA 离线缓存策略设计
+
+某新闻应用需要支持离线阅读，同时保证内容及时更新。
+
+**缓存架构：**
+
+| 资源类型 | 缓存策略 | 存储 | TTL |
+|----------|----------|------|-----|
+| App Shell（HTML/JS/CSS） | Cache First | SW Precache | 长期（版本更新时失效） |
+| 文章正文 | Stale While Revalidate | SW Runtime Cache | 1 天 |
+| 文章图片 | Cache First | SW Runtime Cache | 7 天 |
+| 用户评论 | Network First | SW Runtime Cache | 5 分钟 |
+| 实时推送 | Network Only | 不缓存 | N/A |
+
+**实现要点：**
+
+1. **版本管理**：App Shell 使用带 content-hash 的文件名，每次构建生成新文件名，天然实现缓存失效
+2. **内容更新**：文章使用 Stale While Revalidate，用户立即看到缓存内容，后台静默更新
+3. **存储配额**：使用 `navigator.storage.estimate()` 监控存储使用，接近上限时清理最旧的图片缓存
+4. **离线页面**：所有策略最终都回退到 `offline.html`，提供基本的离线体验
+
+### 缓存失效决策矩阵
+
+| 场景 | 缓存策略 | 失效机制 |
+|------|----------|----------|
+| 构建产物（JS/CSS） | `immutable` + 长期 max-age | 文件名包含 content-hash，部署即失效 |
+| 图片/字体 | 长期 max-age | URL 包含版本号或 hash，更新时改 URL |
+| HTML 入口 | `no-cache` 或短期 max-age | ETag/Last-Modified 协商验证 |
+| API 列表 | `stale-while-revalidate` | 后台更新，用户无感知 |
+| API 详情 | 短期 max-age + ETag | 内容更新时 ETag 变化 |
+| 用户数据 | `private, no-store` | 不缓存 |
+
+## 陷阱
+
+| 陷阱 | 描述 | 后果 |
+|------|------|------|
+| 静态资源无 hash 长期缓存 | `/main.js` 设置 `max-age=1y` 但不改文件名 | 用户永远看不到更新，除非手动清缓存 |
+| Service Worker 缓存不更新 | SW 脚本本身被缓存，浏览器永不获取新版本 | 应用永远停留在旧版本 |
+| 过度使用 no-store | 对所有 API 使用 `no-store`，包括几乎不变的数据 | 重复请求浪费带宽，加载变慢 |
+| 忽略缓存存储上限 | SW 缓存无限增长，超出浏览器配额 | 浏览器自动清除缓存，或写入失败 |
+| CDN 缓存与浏览器缓存冲突 | CDN 缓存了旧版本，浏览器缓存了新版本 | 内容不一致，调试困难 |
+| Service Worker 作用域错误 | SW 注册在 `/app/sw.js` 但试图拦截 `/api/` 请求 | 跨作用域请求无法拦截 |
+| 未处理 SW 更新提示 | 新版本 SW 进入 waiting 状态，用户永远看不到更新 | 应用版本碎片化 |
+
+<Callout type="warning" title="Service Worker 的更新陷阱"
+>
+Service Worker 的更新机制是 Web 开发中最容易出错的环节之一。浏览器默认每 24 小时检查一次 SW 更新，但仅当页面导航时触发。若 SW 脚本本身被 HTTP 缓存（如未配置 `Cache-Control: no-cache`），浏览器可能永远看不到新版本。最佳实践：1) SW 脚本使用 `Cache-Control: no-cache`；2) 注册时使用 `updateViaCache: 'none'`；3) 监听 `waiting` 事件提示用户刷新；4) 提供"立即更新"按钮调用 `skipWaiting()`。
+</Callout>
+
+<Quiz
+  question="`Cache-Control: stale-while-revalidate=60` 的行为是什么？"
+  options={[
+    "资源在 60 秒后自动删除",
+    "资源过期后的 60 秒内，浏览器仍可使用缓存副本，同时在后台发起请求验证/更新缓存",
+    "资源必须在 60 秒内完成重新验证",
+    "浏览器每 60 秒强制刷新缓存"
+  ]}
+  correctIndex={1}
+  explanation="stale-while-revalidate 允许浏览器在资源过期后的指定时间内继续使用旧缓存服务请求，同时异步发起网络请求获取最新版本。这实现了'即时响应 + 后台更新'的最佳用户体验，特别适合新闻列表、配置数据等场景。"
+/>
+
+<Quiz
+  question="为什么带 content-hash 的文件名（如 `main.a3f2b1c.js`）是实现长期缓存的最佳实践？"
+  options={[
+    "hash 文件名更安全",
+    "文件内容变化时 hash 变化，URL 改变自然使旧缓存失效；内容不变时 hash 不变，可永久缓存",
+    "hash 文件名更短",
+    "CDN 要求使用 hash 文件名"
+  ]}
+  correctIndex={1}
+  explanation="content-hash 基于文件内容生成。当文件内容不变时，hash 不变，浏览器/CDN 可无限期缓存；当文件更新时，hash 改变，URL 改变，浏览器将其视为全新资源。这实现了'长期缓存'和'即时失效'的完美结合，无需依赖复杂的缓存清除机制。"
+/>
