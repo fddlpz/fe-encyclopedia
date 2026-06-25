@@ -1,33 +1,94 @@
 ---
-title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
-description: "三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
-volume: "卷一：计算机科学与网络基础"
-chapter: "第 2 章 计算机网络协议"
-section: "2.2"
-tags: ["TCP", "三次握手", "拥塞控制", "滑动窗口"]
-difficulty: "基础"
-status: "已完成"
+title: 2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法
+description: 三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法
+volume: 卷一：计算机科学与网络基础
+chapter: 第 2 章 计算机网络协议
+section: '2.2'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - TCP
+  - 三次握手
+  - 拥塞控制
+  - 滑动窗口
+keywords:
+  - TCP
+  - 三次握手
+  - 拥塞控制
+  - 滑动窗口
+  - 协议
+  - 四次挥手
+  - TIME_WAIT
+  - Nagle
+  - 算法
+summary: >-
+  本文围绕TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle
+  算法展开，重点说明三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法的核心概念、问题背景和适用边界。
+  - 掌握TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法在真实前端工程中的典型用法和验证方式。
+  - 能够识别TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "2.1 OSI 七层模型与 TCP/IP 四层模型对照"
-    slug: "volume-01/chapter-02/2.1-osi-tcpip"
-  - title: "2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP"
-    slug: "volume-01/chapter-02/2.3-udp"
-  - title: "2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3"
-    slug: "volume-01/chapter-02/2.4-http-evolution"
+  - title: 2.1 OSI 七层模型与 TCP/IP 四层模型对照
+    slug: volume-01/chapter-02/2.1-osi-tcpip
+  - title: 2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP
+    slug: volume-01/chapter-02/2.3-udp
+  - title: 2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3
+    slug: volume-01/chapter-02/2.4-http-evolution
 crossRefs:
-  - title: "2.1 OSI 七层模型与 TCP/IP 四层模型对照"
-    slug: "volume-01/chapter-02/2.1-osi-tcpip"
-  - title: "2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP"
-    slug: "volume-01/chapter-02/2.3-udp"
-lastUpdated: "2026-06-25"
+  - title: 2.1 OSI 七层模型与 TCP/IP 四层模型对照
+    slug: volume-01/chapter-02/2.1-osi-tcpip
+  - title: 2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP
+    slug: volume-01/chapter-02/2.3-udp
+references:
+  - title: 'RFC 9293: Transmission Control Protocol'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9293'
+  - title: 'RFC 9112: HTTP/1.1'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9112'
+  - title: 'RFC 9000: QUIC'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9000'
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
 ---
+## 速览
 
-## 原理
+- 本文围绕TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法展开，重点说明三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法」放回 第 2 章 计算机网络协议 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 TCP、三次握手、拥塞控制、滑动窗口 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 TCP 是面向连接的可靠字节流协议。它不理解 HTTP、JSON 或图片，只负责在两个端点之间提供“有序、可靠、无重复”的字节传输。可靠性来自序列号、确认应答、重传、滑动窗口、流量控制和拥塞控制。
 
 三次握手的目标不是“发送三次消息”这么简单，而是让双方确认四件事：客户端能发、服务端能收、服务端能发、客户端能收，并协商初始序列号。
+
+```text
+客户端                                      服务端
+SYN, seq=x ------------------------------>
+                         <-------------- SYN+ACK, seq=y, ack=x+1
+ACK, ack=y+1 ---------------------------->
+连接建立，应用层开始发送数据
+```
+
+四次挥手的核心是 TCP 的全双工特性：一端关闭发送方向，并不代表另一端不能继续发送剩余数据。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| TCP | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 三次握手 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 拥塞控制 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 滑动窗口 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 ```text
 客户端                                      服务端
@@ -54,7 +115,22 @@ ACK -------------------------------------->
 浏览器不会暴露 TCP 套接字参数，但 TCP 行为会影响页面加载。首次连接、弱网重传、拥塞窗口增长、连接复用失败，都会体现在 DevTools 的耗时和线上监控里。
 </Callout>
 
-## 用法
+```text
+主动关闭方                                  被动关闭方
+FIN -------------------------------------->
+                         <-------------- ACK
+                         <-------------- FIN
+ACK -------------------------------------->
+进入 TIME_WAIT，等待足够时间后释放连接
+```
+
+`TIME_WAIT` 通常出现在主动关闭连接的一方。它的作用是确保最后一个 ACK 有机会被对端收到，并避免旧连接的延迟报文污染后续复用的四元组。
+
+<Callout type="tip" title="前端需要掌握的 TCP 边界">
+浏览器不会暴露 TCP 套接字参数，但 TCP 行为会影响页面加载。首次连接、弱网重传、拥塞窗口增长、连接复用失败，都会体现在 DevTools 的耗时和线上监控里。
+</Callout>
+
+## 代码示例
 
 在前端排查里，TCP 常通过间接信号出现。
 
@@ -76,7 +152,7 @@ curl -o NUL -s -w "connect=%{time_connect}\ntls=%{time_appconnect}\ntotal=%{time
 
 如果 `time_connect` 明显高，优先检查访问距离、网络质量、代理、负载均衡和是否频繁新建连接；如果只有首个请求高、后续请求低，通常说明连接复用正在生效。
 
-## 实践
+## 工程实践
 
 前端项目里最常见的 TCP 优化不是调 TCP 参数，而是减少不必要的新连接。
 
@@ -104,7 +180,25 @@ const server = net.createServer((socket) => {
 server.listen(9000)
 ```
 
-## 陷阱
+在真实项目中落地TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 风险 | 建议 |
 |---|---|---|
@@ -114,8 +208,33 @@ server.listen(9000)
 | 用平均耗时判断网络质量 | TCP 重传和拥塞往往体现在长尾请求 | 同时看 P95/P99、失败率和地区维度 |
 | 只在本地验证 | 本地网络不会暴露跨运营商、跨地域、移动网络问题 | 用真实用户监控和多地区探针验证 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [RFC 9293: Transmission Control Protocol](https://datatracker.ietf.org/doc/html/rfc9293)
 - [RFC 9112: HTTP/1.1](https://datatracker.ietf.org/doc/html/rfc9112)
 - [RFC 9000: QUIC](https://datatracker.ietf.org/doc/html/rfc9000)
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)

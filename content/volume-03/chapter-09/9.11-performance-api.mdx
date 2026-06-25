@@ -1,31 +1,90 @@
 ---
-title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
-description: "Performance Timeline、PerformanceObserver、Scheduler API"
-volume: "卷三：浏览器与运行时"
-chapter: "第 9 章 DOM 与 BOM"
-section: "9.11"
-tags: ["Performance API", "PerformanceObserver", "Web Vitals"]
-difficulty: "基础"
-status: "已完成"
+title: 9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API
+description: Performance Timeline、PerformanceObserver、Scheduler API
+volume: 卷三：浏览器与运行时
+chapter: 第 9 章 DOM 与 BOM
+section: '9.11'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - Performance API
+  - PerformanceObserver
+  - Web Vitals
+keywords:
+  - Performance API
+  - PerformanceObserver
+  - Web Vitals
+  - 性能与观测
+  - API
+  - Performance
+  - Timeline
+  - Scheduler
+summary: >-
+  本文围绕性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler
+  API展开，重点说明Performance Timeline、PerformanceObserver、Scheduler
+  API，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - >-
+    理解性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler
+    API的核心概念、问题背景和适用边界。
+  - >-
+    掌握性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler
+    API在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler
+    API相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
-    slug: "volume-03/chapter-09/9.10-media-api"
-  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
-    slug: "volume-03/chapter-09/9.12-security-api"
-  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
-    slug: "volume-03/chapter-09/9.9-workers"
+  - title: 9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC
+    slug: volume-03/chapter-09/9.10-media-api
+  - title: 9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API
+    slug: volume-03/chapter-09/9.12-security-api
+  - title: 9.9 Workers：Web Worker、Service Worker、Worklet
+    slug: volume-03/chapter-09/9.9-workers
 crossRefs:
-  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
-    slug: "volume-03/chapter-09/9.10-media-api"
-  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
-    slug: "volume-03/chapter-09/9.12-security-api"
-lastUpdated: "2026-06-25"
+  - title: 9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC
+    slug: volume-03/chapter-09/9.10-media-api
+  - title: 9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API
+    slug: volume-03/chapter-09/9.12-security-api
+references:
+  - title: 'MDN: PerformanceObserver'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver'
+  - title: 'MDN: PerformanceResourceTiming'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming'
+  - title: 'MDN: PerformanceLongTaskTiming'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming'
+  - title: 'web.dev: Navigation and Resource Timing'
+    url: 'https://web.dev/articles/navigation-and-resource-timing'
+  - title: HTML Living Standard
+    url: 'https://html.spec.whatwg.org/'
+  - title: MDN Web Docs
+    url: 'https://developer.mozilla.org/en-US/docs/Web'
 ---
+## 速览
 
-## 原理
+- 本文围绕性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API展开，重点说明Performance Timeline、PerformanceObserver、Scheduler API，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API」放回 第 9 章 DOM 与 BOM 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Performance API、PerformanceObserver、Web Vitals 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 Performance Timeline 是浏览器暴露性能条目的统一时间轴。PerformanceObserver 允许页面实时订阅导航、资源、绘制、布局偏移、长任务等事件。它是 RUM（真实用户监控）的基础。
+
+在前端工程中，性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Performance API | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| PerformanceObserver | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Web Vitals | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | Entry 类型 | 用途 |
 |---|---|
@@ -39,7 +98,19 @@ Performance Timeline 是浏览器暴露性能条目的统一时间轴。Performa
 
 Scheduler API 仍需按兼容性渐进使用。即使没有 Scheduler，也可以用 `requestIdleCallback`、`requestAnimationFrame` 和任务切分降低阻塞。
 
-## 用法
+| Entry 类型 | 用途 |
+|---|---|
+| `navigation` | HTML 文档导航耗时 |
+| `resource` | CSS、JS、图片、fetch 等资源耗时 |
+| `paint` | FP、FCP |
+| `largest-contentful-paint` | LCP |
+| `layout-shift` | CLS |
+| `event` | 交互事件耗时 |
+| `longtask` | 主线程 50ms 以上任务 |
+
+Scheduler API 仍需按兼容性渐进使用。即使没有 Scheduler，也可以用 `requestIdleCallback`、`requestAnimationFrame` 和任务切分降低阻塞。
+
+## 代码示例
 
 订阅资源耗时：
 
@@ -77,7 +148,7 @@ performance.mark("article-render-end")
 performance.measure("article-render", "article-render-start", "article-render-end")
 ```
 
-## 实践
+## 工程实践
 
 生产监控建议：
 
@@ -88,7 +159,25 @@ performance.measure("article-render", "article-render-start", "article-render-en
 
 上报要采样、去重、脱敏，并通过 `sendBeacon` 或 `fetch(..., { keepalive: true })` 在页面隐藏时发送。
 
-## 陷阱
+在真实项目中落地性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -98,9 +187,34 @@ performance.measure("article-render", "article-render-start", "article-render-en
 | 上报影响性能 | 采样、批量、低优先级发送 |
 | 自定义指标没有定义 | 明确开始/结束点和业务含义 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [MDN: PerformanceObserver](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver)
 - [MDN: PerformanceResourceTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming)
 - [MDN: PerformanceLongTaskTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming)
 - [web.dev: Navigation and Resource Timing](https://web.dev/articles/navigation-and-resource-timing)
+- [HTML Living Standard](https://html.spec.whatwg.org/)
+- [MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web)

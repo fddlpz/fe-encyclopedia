@@ -1,23 +1,96 @@
 ---
-title: "21.1 资源优先级：preload / prefetch / preconnect"
-description: "深入解析资源优先级提示的原理与实战：preload、prefetch、preconnect、dns-prefetch、modulepreload 的浏览器内部机制与最佳实践"
-volume: "卷六：性能优化与可观测性"
-chapter: "第 21 章 加载性能优化"
-section: "21.1"
-tags: ["preload", "prefetch", "preconnect", "dns-prefetch", "modulepreload", "资源优先级"]
-difficulty: "进阶"
-prerequisites: ["20.2-core-web-vitals"]
-related: ["20.2-core-web-vitals", "21.2-code-optimization", "21.3-image-optimization", "21.6-caching"]
-crossRefs: ["20.2-core-web-vitals.mdx", "21.2-code-optimization.mdx", "21.3-image-optimization.mdx", "21.6-caching.mdx"]
-status: "已完成"
-lastUpdated: "2026-06-25"
+title: 21.1 资源优先级：preload / prefetch / preconnect
+description: >-
+  深入解析资源优先级提示的原理与实战：preload、prefetch、preconnect、dns-prefetch、modulepreload
+  的浏览器内部机制与最佳实践
+volume: 卷六：性能优化与可观测性
+chapter: 第 21 章 加载性能优化
+section: '21.1'
+status: 已完成
+difficulty: 进阶
+lastUpdated: '2026-06-26'
+tags:
+  - preload
+  - prefetch
+  - preconnect
+  - dns-prefetch
+  - modulepreload
+  - 资源优先级
+keywords:
+  - preload
+  - prefetch
+  - preconnect
+  - dns-prefetch
+  - modulepreload
+  - 资源优先级
+summary: >-
+  本文围绕资源优先级：preload / prefetch /
+  preconnect展开，重点说明深入解析资源优先级提示的原理与实战：preload、prefetch、preconnect、dns-prefetch、modulepreload
+  的浏览器内部机制与最佳实践，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解资源优先级：preload / prefetch / preconnect的核心概念、问题背景和适用边界。
+  - 掌握资源优先级：preload / prefetch / preconnect在真实前端工程中的典型用法和验证方式。
+  - 能够识别资源优先级：preload / prefetch / preconnect相关的常见误区，并选择合适的优化或治理策略。
+prerequisites:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+related:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 21.2 代码优化：Tree Shaking / Code Splitting / 懒加载
+    slug: volume-06/chapter-21/21.2-code-optimization
+  - title: 21.3 图片优化：WebP / AVIF / srcset / 响应式图片
+    slug: volume-06/chapter-21/21.3-image-optimization
+  - title: 21.6 缓存策略
+    slug: volume-06/chapter-21/21.6-caching
+crossRefs:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 21.2 代码优化：Tree Shaking / Code Splitting / 懒加载
+    slug: volume-06/chapter-21/21.2-code-optimization
+  - title: 21.3 图片优化：WebP / AVIF / srcset / 响应式图片
+    slug: volume-06/chapter-21/21.3-image-optimization
+  - title: 21.6 缓存策略
+    slug: volume-06/chapter-21/21.6-caching
+references:
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
 ---
+## 速览
 
-## 原理
+- 本文围绕资源优先级：preload / prefetch / preconnect展开，重点说明深入解析资源优先级提示的原理与实战：preload、prefetch、preconnect、dns-prefetch、modulepreload 的浏览器内部机制与最佳实践，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「资源优先级：preload / prefetch / preconnect」放回 第 21 章 加载性能优化 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 preload、prefetch、preconnect、dns-prefetch 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 资源优先级提示（Resource Hints）是一组 HTML 声明式机制，允许开发者向浏览器传达资源的相对重要性、预期使用时机和外部域的连接需求。这些提示不改变语义，但深刻影响浏览器的资源调度策略、网络连接管理和渲染流水线行为。
 
 ### 浏览器资源调度模型
+
+现代浏览器使用**优先级队列（Priority Queue）**管理资源加载。每个资源请求被分配一个优先级（Priority），范围从 Highest 到 Lowest。优先级由以下因素共同决定：
+
+1. **资源类型**：CSS 和同步 JavaScript 通常为 Highest；图片为 Low 或 Lowest；异步脚本为 Medium
+2. **文档位置**：`<head>` 中的资源通常比 `<body>` 底部的资源优先级高
+3. **渲染阻塞性**：阻塞渲染的资源自动获得最高优先级
+4. **开发者提示**：`preload`、`fetchpriority` 等显式提示可覆盖默认优先级
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| preload | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| prefetch | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| preconnect | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| dns-prefetch | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| modulepreload | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 现代浏览器使用**优先级队列（Priority Queue）**管理资源加载。每个资源请求被分配一个优先级（Priority），范围从 Highest 到 Lowest。优先级由以下因素共同决定：
 
@@ -72,7 +145,53 @@ lastUpdated: "2026-06-25"
 
 `modulepreload` 是 `preload` 的特化版本，专用于 ES Module。它不仅下载模块文件，还**解析模块依赖图**，递归预加载静态 `import` 的深层依赖。这对于使用原生 ES Module（无打包器）的应用至关重要。
 
-## 用法
+浏览器在 HTTP/2 和 HTTP/3 环境下通过**流优先级（Stream Prioritization）**或**优先级帧（Priority Frames）**将这些优先级传递给服务器，指导服务器的响应顺序和带宽分配。
+
+### preload：当前导航的必需资源
+
+`preload` 声明当前页面**必定需要**的资源，且希望浏览器**尽快开始下载**。它不改变资源的执行时机，仅改变发现（Discovery）和下载（Download）的时机。
+
+**浏览器内部机制：**
+
+当解析器遇到 `<link rel="preload">` 时，浏览器立即创建一个高优先级请求，绕过正常的 HTML 解析依赖链。例如，若 CSS 中通过 `@font-face` 引用了一个字体文件，浏览器需要：解析 HTML -> 下载 CSS -> 解析 CSS -> 发现字体 -> 下载字体。`preload` 可将字体下载提前到 HTML 解析阶段。
+
+关键约束：`preload` 必须与资源的**最终使用类型**匹配。`as="script"` 的资源最终必须作为脚本使用，否则浏览器会下载但不使用，并控制台警告。这是因为 `as` 属性决定了请求的优先级、CORS 模式、Accept 头内容和资源是否进入正确的缓存分区。
+
+### prefetch：未来导航的预期资源
+
+`prefetch` 声明**下一页可能使用**的资源。浏览器在**当前页面空闲时**以最低优先级下载这些资源，并将其存入 HTTP 缓存（Disk Cache）。当用户导航到目标页面时，若缓存未过期，资源可直接从磁盘读取。
+
+**浏览器内部机制：**
+
+`prefetch` 请求使用 `Purpose: prefetch` HTTP 头，服务器可据此返回简化响应。浏览器以 Lowest 优先级发起请求，仅在当前页面无其他高优先级请求且带宽空闲时执行下载。
+
+`prefetch` 的资源存储在标准的 HTTP 缓存中，受 `Cache-Control` 头控制。这意味着：若目标页面设置了 `Cache-Control: no-store`，`prefetch` 的资源在导航后可能无法复用。
+
+### preconnect：预先建立连接
+
+`preconnect` 指示浏览器预先完成到目标域名的 DNS 查询、TCP 握手和 TLS 协商。当后续请求真正发起时，可节省 100~800ms 的连接建立时间。
+
+**连接建立的时间成本（典型值）：**
+
+| 阶段 | HTTP/1.1 | HTTP/2 | HTTP/3 |
+|------|----------|--------|--------|
+| DNS 查询 | 20~120ms | 20~120ms | 20~120ms |
+| TCP 握手 | 20~80ms | 20~80ms | 0ms（基于 UDP） |
+| TLS 1.2 握手 | 80~200ms | 80~200ms | 0ms（QUIC 内置） |
+| TLS 1.3 握手 | 20~80ms | 20~80ms | 0ms |
+| **总计** | **120~400ms** | **120~400ms** | **20~120ms** |
+
+`preconnect` 对使用多个第三方域名的页面（如 Google Fonts、Analytics、CDN 图片）效果尤为显著。
+
+### dns-prefetch：轻量级 DNS 预解析
+
+`dns-prefetch` 仅执行 DNS 查询，不建立 TCP/TLS 连接。它比 `preconnect` 更轻量，适用于"可能用到但不确定"的域名。浏览器通常在空闲时执行 DNS 预解析，对当前页面性能影响极小。
+
+### modulepreload：ES Module 图的预加载
+
+`modulepreload` 是 `preload` 的特化版本，专用于 ES Module。它不仅下载模块文件，还**解析模块依赖图**，递归预加载静态 `import` 的深层依赖。这对于使用原生 ES Module（无打包器）的应用至关重要。
+
+## 代码示例
 
 ### 基础用法示例
 
@@ -231,7 +350,7 @@ img.fetchPriority = 'high';
 img.src = '/hero.jpg';
 ```
 
-## 实践
+## 工程实践
 
 ### 案例：多域名电商站的连接优化
 
@@ -276,7 +395,25 @@ img.src = '/hero.jpg';
 | 原生 ES Module 应用 | `modulepreload` | 解析依赖图，递归预加载 |
 | 首屏内多张图片竞争带宽 | `fetchpriority="high/low"` | 微调优先级，确保 LCP 资源优先 |
 
-## 陷阱
+在真实项目中落地资源优先级：preload / prefetch / preconnect时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地资源优先级：preload / prefetch / preconnect时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 描述 | 后果 |
 |------|------|------|
@@ -315,3 +452,31 @@ img.src = '/hero.jpg';
   correctIndex={1}
   explanation="字体请求（通过 @font-face）默认使用匿名 CORS 模式，而 link rel='preload' 默认使用 no-cors 模式。若 preload 时未指定 crossorigin，浏览器会因模式不匹配而丢弃预加载的资源，导致重复请求。"
 />
+
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 资源优先级：preload / prefetch / preconnect的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习资源优先级：preload / prefetch / preconnect时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把资源优先级：preload / prefetch / preconnect从知识点转化为可落地的工程判断。"}
+/>
+
+## 参考资料
+
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)

@@ -1,31 +1,83 @@
 ---
-title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
-description: "泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 7 章 TypeScript 全栈指南"
-section: "7.3"
-tags: ["泛型", "条件类型", "映射类型", "infer"]
-difficulty: "高级"
-status: "已完成"
+title: 7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型
+description: 泛型、条件类型、映射类型、模板字面量类型、infer、递归类型
+volume: 卷二：Web 标准与语言规范
+chapter: 第 7 章 TypeScript 全栈指南
+section: '7.3'
+status: 已完成
+difficulty: 高级
+lastUpdated: '2026-06-26'
+tags:
+  - 泛型
+  - 条件类型
+  - 映射类型
+  - infer
+keywords:
+  - 泛型
+  - 条件类型
+  - 映射类型
+  - infer
+  - 高级类型
+  - 模板字面量类型
+  - 递归类型
+summary: >-
+  本文围绕高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型展开，重点说明泛型、条件类型、映射类型、模板字面量类型、infer、递归类型，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型的核心概念、问题背景和适用边界。
+  - 掌握高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型在真实前端工程中的典型用法和验证方式。
+  - 能够识别高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
-    slug: "volume-02/chapter-07/7.2-basic-types"
-  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
-    slug: "volume-02/chapter-07/7.4-type-utils"
-  - title: "7.1 类型系统基础：静态类型 vs 动态类型、类型推断、类型断言、unknown vs any、never"
-    slug: "volume-02/chapter-07/7.1-ts-basics"
+  - title: 7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组
+    slug: volume-02/chapter-07/7.2-basic-types
+  - title: 7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）
+    slug: volume-02/chapter-07/7.4-type-utils
+  - title: 7.1 类型系统基础：静态类型 vs 动态类型、类型推断、类型断言、unknown vs any、never
+    slug: volume-02/chapter-07/7.1-ts-basics
 crossRefs:
-  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
-    slug: "volume-02/chapter-07/7.2-basic-types"
-  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
-    slug: "volume-02/chapter-07/7.4-type-utils"
-lastUpdated: "2026-06-25"
+  - title: 7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组
+    slug: volume-02/chapter-07/7.2-basic-types
+  - title: 7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）
+    slug: volume-02/chapter-07/7.4-type-utils
+references:
+  - title: 'TypeScript Handbook: Generics'
+    url: 'https://www.typescriptlang.org/docs/handbook/2/generics.html'
+  - title: 'TypeScript Handbook: Conditional Types'
+    url: 'https://www.typescriptlang.org/docs/handbook/2/conditional-types.html'
+  - title: 'TypeScript Handbook: Mapped Types'
+    url: 'https://www.typescriptlang.org/docs/handbook/2/mapped-types.html'
+  - title: 'TypeScript Handbook: Template Literal Types'
+    url: 'https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html'
+  - title: TypeScript Handbook
+    url: 'https://www.typescriptlang.org/docs/handbook/intro.html'
+  - title: TSConfig Reference
+    url: 'https://www.typescriptlang.org/tsconfig/'
 ---
+## 速览
 
-## 原理
+- 本文围绕高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型展开，重点说明泛型、条件类型、映射类型、模板字面量类型、infer、递归类型，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型」放回 第 7 章 TypeScript 全栈指南 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 泛型、条件类型、映射类型、infer 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 高级类型用于把重复的类型关系抽象出来。它们能表达“输入类型和输出类型之间的关系”，而不只是单个变量是什么类型。
+
+在前端工程中，高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 泛型 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 条件类型 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 映射类型 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| infer | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 能力 | 作用 |
 |---|---|
@@ -38,7 +90,18 @@ lastUpdated: "2026-06-25"
 
 高级类型的目标是减少重复、约束 API，而不是展示复杂度。类型越靠近公共 API，越要重视可读性、编译性能和错误信息。
 
-## 用法
+| 能力 | 作用 |
+|---|---|
+| 泛型 | 把类型作为参数传入函数、接口或类型别名 |
+| 条件类型 | 根据 `T extends U` 选择不同类型分支 |
+| 映射类型 | 遍历属性 key，批量转换属性 |
+| 模板字面量类型 | 拼接和约束字符串字面量 |
+| `infer` | 在条件类型中提取局部类型 |
+| 递归类型 | 处理树、JSON、路由路径等递归结构 |
+
+高级类型的目标是减少重复、约束 API，而不是展示复杂度。类型越靠近公共 API，越要重视可读性、编译性能和错误信息。
+
+## 代码示例
 
 泛型保留输入输出关系：
 
@@ -89,7 +152,7 @@ function subscribe(eventName: EventName) {
 }
 ```
 
-## 实践
+## 工程实践
 
 高级类型适合沉淀在库、框架、设计系统和跨模块工具层中。业务代码中应优先使用命名类型和中间类型，避免在函数签名里堆嵌套表达式。
 
@@ -105,7 +168,25 @@ type ArticleList = ApiData<{ ok: true; data: { id: string; title: string }[] }>
 
 递归类型要设置合理边界，避免编译器展开过深。对于深层对象路径、复杂 JSON schema 和路由推导，优先采用成熟库或生成类型，而不是手写无限递归类型。
 
-## 陷阱
+在真实项目中落地高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -115,9 +196,34 @@ type ArticleList = ApiData<{ ok: true; data: { id: string; title: string }[] }>
 | 递归类型导致编译慢 | 限制深度，改用代码生成或更简单模型 |
 | 错误信息不可读 | 公共 API 类型要优先可解释 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [TypeScript Handbook: Generics](https://www.typescriptlang.org/docs/handbook/2/generics.html)
 - [TypeScript Handbook: Conditional Types](https://www.typescriptlang.org/docs/handbook/2/conditional-types.html)
 - [TypeScript Handbook: Mapped Types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
 - [TypeScript Handbook: Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
+- [TSConfig Reference](https://www.typescriptlang.org/tsconfig/)

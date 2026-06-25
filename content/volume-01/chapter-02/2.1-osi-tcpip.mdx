@@ -1,27 +1,64 @@
 ---
-title: "2.1 OSI 七层模型与 TCP/IP 四层模型对照"
-description: "OSI 七层模型与 TCP/IP 四层模型对照"
-volume: "卷一：计算机科学与网络基础"
-chapter: "第 2 章 计算机网络协议"
-section: "2.1"
-tags: ["OSI", "TCP/IP", "网络模型", "协议"]
-difficulty: "基础"
-status: "已完成"
+title: 2.1 OSI 七层模型与 TCP/IP 四层模型对照
+description: OSI 七层模型与 TCP/IP 四层模型对照
+volume: 卷一：计算机科学与网络基础
+chapter: 第 2 章 计算机网络协议
+section: '2.1'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - OSI
+  - TCP/IP
+  - 网络模型
+  - 协议
+keywords:
+  - OSI
+  - TCP/IP
+  - 网络模型
+  - 协议
+  - 七层模型与
+  - TCP
+  - IP
+  - 四层模型对照
+summary: >-
+  本文围绕OSI 七层模型与 TCP/IP 四层模型对照展开，重点说明OSI 七层模型与 TCP/IP
+  四层模型对照，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解OSI 七层模型与 TCP/IP 四层模型对照的核心概念、问题背景和适用边界。
+  - 掌握OSI 七层模型与 TCP/IP 四层模型对照在真实前端工程中的典型用法和验证方式。
+  - 能够识别OSI 七层模型与 TCP/IP 四层模型对照相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
-    slug: "volume-01/chapter-02/2.2-tcp"
-  - title: "2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP"
-    slug: "volume-01/chapter-02/2.3-udp"
+  - title: 2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法
+    slug: volume-01/chapter-02/2.2-tcp
+  - title: 2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP
+    slug: volume-01/chapter-02/2.3-udp
 crossRefs:
-  - title: "1.5 磁盘 I/O 与文件系统：同步/异步 I/O、Node.js 的 libuv 事件循环"
-    slug: "volume-01/chapter-01/1.5-disk-io"
-  - title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
-    slug: "volume-01/chapter-02/2.2-tcp"
-lastUpdated: "2026-06-25"
+  - title: 1.5 磁盘 I/O 与文件系统：同步/异步 I/O、Node.js 的 libuv 事件循环
+    slug: volume-01/chapter-01/1.5-disk-io
+  - title: 2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法
+    slug: volume-01/chapter-02/2.2-tcp
+references:
+  - title: 'RFC 9110: HTTP Semantics'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9110'
+  - title: 'RFC 9293: Transmission Control Protocol'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9293'
+  - title: 'RFC 9000: QUIC'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9000'
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
 ---
+## 速览
 
-## 原理
+- 本文围绕OSI 七层模型与 TCP/IP 四层模型对照展开，重点说明OSI 七层模型与 TCP/IP 四层模型对照，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「OSI 七层模型与 TCP/IP 四层模型对照」放回 第 2 章 计算机网络协议 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 OSI、TCP/IP、网络模型、协议 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 OSI 七层模型是教学和排障模型，TCP/IP 四层模型更贴近互联网协议栈的工程实现。前端工程师不需要直接操作链路层或网络层，但必须能把一次页面请求拆成多个阶段：域名解析、连接建立、TLS 握手、HTTP 请求响应、资源解析和运行时执行。
 
@@ -41,6 +78,25 @@ OSI 七层模型是教学和排障模型，TCP/IP 四层模型更贴近互联网
 
 从浏览器发出 `https://example.com/app.js` 的请求时，实际链路可以简化为：
 
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| OSI | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| TCP/IP | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 网络模型 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 协议 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
+
+<Callout type="info" title="前端排障的核心">
+不要把“请求慢”直接等同于“接口慢”。同一个瀑布图里，DNS、TCP、TLS、TTFB 和 Content Download 分别对应不同层的问题，优化手段也不同。
+</Callout>
+
+从浏览器发出 `https://example.com/app.js` 的请求时，实际链路可以简化为：
+
 ```text
 URL 输入
   -> DNS 查询域名对应的 IP
@@ -53,7 +109,19 @@ URL 输入
 
 这个分层模型的价值不在于背诵层名，而在于定位边界：HTTP 负责语义，TLS 负责加密和身份校验，TCP 负责可靠字节流，IP 负责寻址和路由，链路层负责同一网络内的帧传输。
 
-## 用法
+```text
+URL 输入
+  -> DNS 查询域名对应的 IP
+  -> TCP 或 QUIC 建立传输连接
+  -> TLS 验证证书并协商密钥
+  -> HTTP 发送请求头和请求体
+  -> 服务器返回响应
+  -> 浏览器解析、缓存并执行资源
+```
+
+这个分层模型的价值不在于背诵层名，而在于定位边界：HTTP 负责语义，TLS 负责加密和身份校验，TCP 负责可靠字节流，IP 负责寻址和路由，链路层负责同一网络内的帧传输。
+
+## 代码示例
 
 分析一个网络问题时，先按层级建立证据链。
 
@@ -79,7 +147,7 @@ curl -o NUL -s -w "dns=%{time_namelookup}\nconnect=%{time_connect}\ntls=%{time_a
 - `Waiting for server response` 高：检查服务端处理、数据库、回源链路。
 - `Content Download` 高：检查资源体积、带宽、压缩和缓存。
 
-## 实践
+## 工程实践
 
 一个前端页面的首屏优化通常会同时触及多层协议。下面是更接近真实项目的排查顺序。
 
@@ -99,7 +167,25 @@ curl -o NUL -s -w "dns=%{time_namelookup}\nconnect=%{time_connect}\ntls=%{time_a
 
 `dns-prefetch` 和 `preconnect` 都是优化手段，不是默认越多越好。每个 `preconnect` 都可能占用连接和服务端资源，应该只给关键路径上的少数域名使用。
 
-## 陷阱
+在真实项目中落地OSI 七层模型与 TCP/IP 四层模型对照时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地OSI 七层模型与 TCP/IP 四层模型对照时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 为什么不准确 | 更可靠的处理方式 |
 |---|---|---|
@@ -109,8 +195,33 @@ curl -o NUL -s -w "dns=%{time_namelookup}\nconnect=%{time_connect}\ntls=%{time_a
 | 认为前端可以直接控制 TCP 参数 | 浏览器屏蔽了底层套接字，多数 TCP 行为由操作系统和浏览器网络栈决定 | 通过资源策略、协议选择和服务端配置间接优化 |
 | 忽略代理和 CDN | 线上链路常经过 CDN、WAF、负载均衡、企业代理 | 排查时同时看客户端、边缘节点和源站 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | OSI 七层模型与 TCP/IP 四层模型对照的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习OSI 七层模型与 TCP/IP 四层模型对照时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把OSI 七层模型与 TCP/IP 四层模型对照从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [RFC 9110: HTTP Semantics](https://datatracker.ietf.org/doc/html/rfc9110)
 - [RFC 9293: Transmission Control Protocol](https://datatracker.ietf.org/doc/html/rfc9293)
 - [RFC 9000: QUIC](https://datatracker.ietf.org/doc/html/rfc9000)
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)

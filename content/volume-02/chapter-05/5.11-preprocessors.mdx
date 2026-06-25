@@ -1,31 +1,87 @@
 ---
-title: "5.11 CSS 预处理器：Sass/SCSS、Less、Stylus"
-description: "Sass/SCSS、Less、Stylus"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 5 章 CSS 完全参考"
-section: "5.11"
-tags: ["Sass", "SCSS", "Less", "预处理器"]
-difficulty: "基础"
-status: "已完成"
+title: 5.11 CSS 预处理器：Sass/SCSS、Less、Stylus
+description: Sass/SCSS、Less、Stylus
+volume: 卷二：Web 标准与语言规范
+chapter: 第 5 章 CSS 完全参考
+section: '5.11'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - Sass
+  - SCSS
+  - Less
+  - 预处理器
+keywords:
+  - Sass
+  - SCSS
+  - Less
+  - 预处理器
+  - CSS
+  - Stylus
+summary: >-
+  本文围绕CSS
+  预处理器：Sass/SCSS、Less、Stylus展开，重点说明Sass/SCSS、Less、Stylus，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解CSS 预处理器：Sass/SCSS、Less、Stylus的核心概念、问题背景和适用边界。
+  - 掌握CSS 预处理器：Sass/SCSS、Less、Stylus在真实前端工程中的典型用法和验证方式。
+  - 能够识别CSS 预处理器：Sass/SCSS、Less、Stylus相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
-    slug: "volume-02/chapter-05/5.10-css-architecture"
-  - title: "5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View Transitions"
-    slug: "volume-02/chapter-05/5.12-css-new-features"
-  - title: "5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path"
-    slug: "volume-02/chapter-05/5.9-filter-blend"
+  - title: 5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS
+    slug: volume-02/chapter-05/5.10-css-architecture
+  - title: >-
+      5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View
+      Transitions
+    slug: volume-02/chapter-05/5.12-css-new-features
+  - title: 5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path
+    slug: volume-02/chapter-05/5.9-filter-blend
 crossRefs:
-  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
-    slug: "volume-02/chapter-05/5.10-css-architecture"
-  - title: "5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View Transitions"
-    slug: "volume-02/chapter-05/5.12-css-new-features"
-lastUpdated: "2026-06-25"
+  - title: 5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS
+    slug: volume-02/chapter-05/5.10-css-architecture
+  - title: >-
+      5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View
+      Transitions
+    slug: volume-02/chapter-05/5.12-css-new-features
+references:
+  - title: Sass documentation
+    url: 'https://sass-lang.com/documentation/'
+  - title: 'Sass: @use'
+    url: 'https://sass-lang.com/documentation/at-rules/use/'
+  - title: Less documentation
+    url: 'https://lesscss.org/'
+  - title: Stylus documentation
+    url: 'https://stylus-lang.com/'
+  - title: MDN CSS Reference
+    url: 'https://developer.mozilla.org/en-US/docs/Web/CSS'
+  - title: CSS Working Group Drafts
+    url: 'https://drafts.csswg.org/'
 ---
+## 速览
 
-## 原理
+- 本文围绕CSS 预处理器：Sass/SCSS、Less、Stylus展开，重点说明Sass/SCSS、Less、Stylus，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「CSS 预处理器：Sass/SCSS、Less、Stylus」放回 第 5 章 CSS 完全参考 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Sass、SCSS、Less、预处理器 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 CSS 预处理器在浏览器执行前把扩展语法编译为标准 CSS。Sass/SCSS、Less、Stylus 的共同价值是变量、嵌套、混入、函数和模块化。随着 CSS 自定义属性、原生嵌套、`@layer`、`color-mix()` 等能力成熟，预处理器不再是现代 CSS 的必选项，但在大型存量项目和设计系统编译阶段仍然常见。
+
+在前端工程中，CSS 预处理器：Sass/SCSS、Less、Stylus通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Sass | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| SCSS | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Less | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 预处理器 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 工具 | 语法特点 | 现代使用建议 |
 |---|---|---|
@@ -35,7 +91,15 @@ CSS 预处理器在浏览器执行前把扩展语法编译为标准 CSS。Sass/S
 
 预处理器变量是编译期值，CSS 自定义属性是运行时值。主题、暗色模式和用户动态配置通常应使用 CSS 自定义属性；静态计算、设计 token 派生和批量生成工具类可以放在预处理阶段。
 
-## 用法
+| 工具 | 语法特点 | 现代使用建议 |
+|---|---|---|
+| Sass/SCSS | 生态成熟，Dart Sass 是主流实现 | 新项目优先 `@use`/`@forward`，避免旧 `@import` |
+| Less | 与 Ant Design 等生态历史关联强 | 适合维护既有 Less 变量体系 |
+| Stylus | 语法灵活、可省略符号 | 新项目谨慎使用，团队一致性成本较高 |
+
+预处理器变量是编译期值，CSS 自定义属性是运行时值。主题、暗色模式和用户动态配置通常应使用 CSS 自定义属性；静态计算、设计 token 派生和批量生成工具类可以放在预处理阶段。
+
+## 代码示例
 
 Sass 模块化：
 
@@ -85,7 +149,7 @@ Less 变量和 mixin：
 }
 ```
 
-## 实践
+## 工程实践
 
 预处理器的工程边界应写清楚：
 
@@ -111,7 +175,25 @@ const spacingTokens: DesignToken[] = [
 console.table(spacingTokens)
 ```
 
-## 陷阱
+在真实项目中落地CSS 预处理器：Sass/SCSS、Less、Stylus时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地CSS 预处理器：Sass/SCSS、Less、Stylus时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -121,9 +203,34 @@ console.table(spacingTokens)
 | mixin 生成大量重复 CSS | 只封装结构性规则，简单值优先使用变量 |
 | 工具链隐藏真实 CSS | 开启 source map，并在构建产物中检查重复和体积 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | CSS 预处理器：Sass/SCSS、Less、Stylus的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习CSS 预处理器：Sass/SCSS、Less、Stylus时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把CSS 预处理器：Sass/SCSS、Less、Stylus从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [Sass documentation](https://sass-lang.com/documentation/)
 - [Sass: @use](https://sass-lang.com/documentation/at-rules/use/)
 - [Less documentation](https://lesscss.org/)
 - [Stylus documentation](https://stylus-lang.com/)
+- [MDN CSS Reference](https://developer.mozilla.org/en-US/docs/Web/CSS)
+- [CSS Working Group Drafts](https://drafts.csswg.org/)

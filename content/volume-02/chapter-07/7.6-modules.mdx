@@ -1,31 +1,93 @@
 ---
-title: "7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace"
-description: "ES Module vs CommonJS、moduleResolution、paths、namespace"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 7 章 TypeScript 全栈指南"
-section: "7.6"
-tags: ["ESM", "CommonJS", "moduleResolution", "namespace"]
-difficulty: "进阶"
-status: "已完成"
+title: 7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace
+description: ES Module vs CommonJS、moduleResolution、paths、namespace
+volume: 卷二：Web 标准与语言规范
+chapter: 第 7 章 TypeScript 全栈指南
+section: '7.6'
+status: 已完成
+difficulty: 进阶
+lastUpdated: '2026-06-26'
+tags:
+  - ESM
+  - CommonJS
+  - moduleResolution
+  - namespace
+keywords:
+  - ESM
+  - CommonJS
+  - moduleResolution
+  - namespace
+  - 模块与命名空间
+  - ES
+  - Module
+  - vs
+  - paths
+summary: >-
+  本文围绕模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace展开，重点说明ES
+  Module vs
+  CommonJS、moduleResolution、paths、namespace，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - >-
+    理解模块与命名空间：ES Module vs
+    CommonJS、moduleResolution、paths、namespace的核心概念、问题背景和适用边界。
+  - >-
+    掌握模块与命名空间：ES Module vs
+    CommonJS、moduleResolution、paths、namespace在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别模块与命名空间：ES Module vs
+    CommonJS、moduleResolution、paths、namespace相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
-    slug: "volume-02/chapter-07/7.5-declarations"
-  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
-    slug: "volume-02/chapter-07/7.7-type-safety"
-  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
-    slug: "volume-02/chapter-07/7.4-type-utils"
+  - title: 7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped
+    slug: volume-02/chapter-07/7.5-declarations
+  - title: 7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess
+    slug: volume-02/chapter-07/7.7-type-safety
+  - title: 7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）
+    slug: volume-02/chapter-07/7.4-type-utils
 crossRefs:
-  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
-    slug: "volume-02/chapter-07/7.5-declarations"
-  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
-    slug: "volume-02/chapter-07/7.7-type-safety"
-lastUpdated: "2026-06-25"
+  - title: 7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped
+    slug: volume-02/chapter-07/7.5-declarations
+  - title: 7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess
+    slug: volume-02/chapter-07/7.7-type-safety
+references:
+  - title: 'TypeScript TSConfig: module'
+    url: 'https://www.typescriptlang.org/tsconfig/#module'
+  - title: 'TypeScript TSConfig: moduleResolution'
+    url: 'https://www.typescriptlang.org/tsconfig/#moduleResolution'
+  - title: 'TypeScript Handbook: Modules'
+    url: 'https://www.typescriptlang.org/docs/handbook/modules.html'
+  - title: 'Node.js Packages: conditional exports'
+    url: 'https://nodejs.org/api/packages.html#conditional-exports'
+  - title: TypeScript Handbook
+    url: 'https://www.typescriptlang.org/docs/handbook/intro.html'
+  - title: TSConfig Reference
+    url: 'https://www.typescriptlang.org/tsconfig/'
 ---
+## 速览
 
-## 原理
+- 本文围绕模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace展开，重点说明ES Module vs CommonJS、moduleResolution、paths、namespace，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace」放回 第 7 章 TypeScript 全栈指南 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 ESM、CommonJS、moduleResolution、namespace 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 TypeScript 同时要理解源码模块语法、运行时模块系统和类型声明解析。ES Module 和 CommonJS 的差异不只是语法不同，还涉及加载时机、默认导出、实时绑定、tree shaking、文件扩展名和 `package.json` 的 `type`、`exports` 字段。
+
+在前端工程中，模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| ESM | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| CommonJS | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| moduleResolution | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| namespace | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 选项 | 作用 |
 |---|---|
@@ -37,7 +99,17 @@ TypeScript 同时要理解源码模块语法、运行时模块系统和类型声
 
 现代前端项目通常使用 ESM，并让构建工具处理打包。Node.js 库需要更谨慎，因为 ESM、CJS、双包发布和条件导出会直接影响用户怎么导入。
 
-## 用法
+| 选项 | 作用 |
+|---|---|
+| `module` | TypeScript 输出或保留哪种模块语法 |
+| `moduleResolution` | 如何查找模块和声明文件 |
+| `baseUrl` / `paths` | 编译期路径别名 |
+| `types` / `typeRoots` | 控制全局类型包加载 |
+| `namespace` | 旧式内部模块，现代项目较少新增 |
+
+现代前端项目通常使用 ESM，并让构建工具处理打包。Node.js 库需要更谨慎，因为 ESM、CJS、双包发布和条件导出会直接影响用户怎么导入。
+
+## 代码示例
 
 Next.js、Vite 等现代项目通常保留 ESM：
 
@@ -87,7 +159,7 @@ export namespace LegacyMath {
 }
 ```
 
-## 实践
+## 工程实践
 
 模块治理建议：
 
@@ -108,7 +180,25 @@ export namespace LegacyMath {
 }
 ```
 
-## 陷阱
+在真实项目中落地模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -118,9 +208,34 @@ export namespace LegacyMath {
 | 滥用 namespace | 新代码使用 ESM，namespace 仅用于旧声明或全局库建模 |
 | 忽略文件扩展名 | NodeNext 下相对 ESM 导入需要关注 `.js` 扩展 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [TypeScript TSConfig: module](https://www.typescriptlang.org/tsconfig/#module)
 - [TypeScript TSConfig: moduleResolution](https://www.typescriptlang.org/tsconfig/#moduleResolution)
 - [TypeScript Handbook: Modules](https://www.typescriptlang.org/docs/handbook/modules.html)
 - [Node.js Packages: conditional exports](https://nodejs.org/api/packages.html#conditional-exports)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
+- [TSConfig Reference](https://www.typescriptlang.org/tsconfig/)

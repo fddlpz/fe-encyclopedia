@@ -1,27 +1,93 @@
 ---
-title: "9.13 新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒"
-description: "Popover API、View Transitions API、Anchor Positioning API、隐私沙盒"
-volume: "卷三：浏览器与运行时"
-chapter: "第 9 章 DOM 与 BOM"
-section: "9.13"
-tags: ["Popover", "View Transitions", "隐私沙盒", "新API"]
-difficulty: "基础"
-status: "已完成"
+title: 9.13 新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒
+description: Popover API、View Transitions API、Anchor Positioning API、隐私沙盒
+volume: 卷三：浏览器与运行时
+chapter: 第 9 章 DOM 与 BOM
+section: '9.13'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - Popover
+  - View Transitions
+  - 隐私沙盒
+  - 新API
+keywords:
+  - Popover
+  - View Transitions
+  - 隐私沙盒
+  - 新API
+  - 新兴
+  - Web
+  - API
+  - View
+  - Transitions
+  - Anchor
+  - Positioning
+summary: >-
+  本文围绕新兴 Web API：Popover API、View Transitions API、Anchor Positioning
+  API、隐私沙盒展开，重点说明Popover API、View Transitions API、Anchor Positioning
+  API、隐私沙盒，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - >-
+    理解新兴 Web API：Popover API、View Transitions API、Anchor Positioning
+    API、隐私沙盒的核心概念、问题背景和适用边界。
+  - >-
+    掌握新兴 Web API：Popover API、View Transitions API、Anchor Positioning
+    API、隐私沙盒在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别新兴 Web API：Popover API、View Transitions API、Anchor Positioning
+    API、隐私沙盒相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
-    slug: "volume-03/chapter-09/9.12-security-api"
-  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
-    slug: "volume-03/chapter-09/9.11-performance-api"
+  - title: 9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API
+    slug: volume-03/chapter-09/9.12-security-api
+  - title: 9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API
+    slug: volume-03/chapter-09/9.11-performance-api
 crossRefs:
-  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
-    slug: "volume-03/chapter-09/9.12-security-api"
-  - title: "10.1 JavaScript 引擎：V8 架构、隐藏类、内联缓存、快速属性与字典模式"
-    slug: "volume-03/chapter-10/10.1-js-engine"
-lastUpdated: "2026-06-25"
+  - title: 9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API
+    slug: volume-03/chapter-09/9.12-security-api
+  - title: 10.1 JavaScript 引擎：V8 架构、隐藏类、内联缓存、快速属性与字典模式
+    slug: volume-03/chapter-10/10.1-js-engine
+references:
+  - title: 'MDN: Web APIs'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API'
+  - title: 'MDN: View Transition API'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API'
+  - title: 'Chrome Developers: View Transitions'
+    url: 'https://developer.chrome.com/docs/web-platform/view-transitions'
+  - title: 'MDN: Clipboard API'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API'
+  - title: HTML Living Standard
+    url: 'https://html.spec.whatwg.org/'
+  - title: MDN Web Docs
+    url: 'https://developer.mozilla.org/en-US/docs/Web'
 ---
+## 速览
 
-## 原理
+- 本文围绕新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒展开，重点说明Popover API、View Transitions API、Anchor Positioning API、隐私沙盒，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒」放回 第 9 章 DOM 与 BOM 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Popover、View Transitions、隐私沙盒、新API 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
+
+在前端工程中，新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+在前端工程中，新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Popover | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| View Transitions | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 隐私沙盒 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 新API | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 新兴 Web API 的共同趋势是把过去由 JS 库实现的能力交给浏览器：弹层、视图过渡、锚点定位、剪贴板、分享、锁、压缩、文件系统、硬件访问和隐私保护。它们的成熟度差异很大，必须按 Baseline、MDN 兼容性表和目标浏览器验证。
 
@@ -33,7 +99,17 @@ lastUpdated: "2026-06-25"
 | Clipboard/Web Share | 系统能力集成 | 需要安全上下文和用户手势 |
 | Privacy Sandbox | 广告、归因和隐私相关能力 | 强依赖浏览器政策和地区环境 |
 
-## 用法
+新兴 Web API 的共同趋势是把过去由 JS 库实现的能力交给浏览器：弹层、视图过渡、锚点定位、剪贴板、分享、锁、压缩、文件系统、硬件访问和隐私保护。它们的成熟度差异很大，必须按 Baseline、MDN 兼容性表和目标浏览器验证。
+
+| API | 用途 | 接入策略 |
+|---|---|---|
+| Popover API | 原生弹层和 light dismiss | 可渐进替代简单 dropdown |
+| View Transitions | DOM 状态或页面切换动画 | 动画增强，不影响核心导航 |
+| Anchor Positioning | 弹层相对锚点定位 | 需要回退 |
+| Clipboard/Web Share | 系统能力集成 | 需要安全上下文和用户手势 |
+| Privacy Sandbox | 广告、归因和隐私相关能力 | 强依赖浏览器政策和地区环境 |
+
+## 代码示例
 
 Popover：
 
@@ -73,7 +149,7 @@ async function copyText(text: string) {
 }
 ```
 
-## 实践
+## 工程实践
 
 新 API 接入清单：
 
@@ -94,7 +170,25 @@ function supportsViewTransition() {
 
 隐私沙盒相关 API 变化受浏览器政策、监管和生态影响较大，工程上应通过服务端配置、实验开关和监控灰度，不应写死在核心业务路径中。
 
-## 陷阱
+在真实项目中落地新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -104,9 +198,34 @@ function supportsViewTransition() {
 | Clipboard 读取随意调用 | 读取剪贴板属于敏感能力，必须明确授权 |
 | 隐私沙盒能力写死 | 通过配置和灰度控制 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [MDN: Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
 - [MDN: View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API)
 - [Chrome Developers: View Transitions](https://developer.chrome.com/docs/web-platform/view-transitions)
 - [MDN: Clipboard API](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API)
+- [HTML Living Standard](https://html.spec.whatwg.org/)
+- [MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web)

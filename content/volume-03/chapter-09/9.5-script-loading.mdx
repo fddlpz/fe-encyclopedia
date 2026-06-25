@@ -1,31 +1,84 @@
 ---
-title: "9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch"
-description: "async/defer/module、预加载扫描器、preload/prefetch"
-volume: "卷三：浏览器与运行时"
-chapter: "第 9 章 DOM 与 BOM"
-section: "9.5"
-tags: ["async", "defer", "preload", "prefetch"]
-difficulty: "基础"
-status: "已完成"
+title: 9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch
+description: async/defer/module、预加载扫描器、preload/prefetch
+volume: 卷三：浏览器与运行时
+chapter: 第 9 章 DOM 与 BOM
+section: '9.5'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - async
+  - defer
+  - preload
+  - prefetch
+keywords:
+  - async
+  - defer
+  - preload
+  - prefetch
+  - 脚本执行与解析阻塞
+  - module
+  - 预加载扫描器
+summary: >-
+  本文围绕脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch展开，重点说明async/defer/module、预加载扫描器、preload/prefetch，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch的核心概念、问题背景和适用边界。
+  - 掌握脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
-    slug: "volume-03/chapter-09/9.4-viewport"
-  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
-    slug: "volume-03/chapter-09/9.6-storage"
-  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
-    slug: "volume-03/chapter-09/9.3-events"
+  - title: 9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver
+    slug: volume-03/chapter-09/9.4-viewport
+  - title: 9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS
+    slug: volume-03/chapter-09/9.6-storage
+  - title: 9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染
+    slug: volume-03/chapter-09/9.3-events
 crossRefs:
-  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
-    slug: "volume-03/chapter-09/9.4-viewport"
-  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
-    slug: "volume-03/chapter-09/9.6-storage"
-lastUpdated: "2026-06-25"
+  - title: 9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver
+    slug: volume-03/chapter-09/9.4-viewport
+  - title: 9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS
+    slug: volume-03/chapter-09/9.6-storage
+references:
+  - title: 'MDN: script element'
+    url: >-
+      https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script
+  - title: 'MDN: import maps'
+    url: >-
+      https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap
+  - title: 'web.dev: Optimize resource loading'
+    url: 'https://web.dev/learn/performance/resource-hints'
+  - title: ECMAScript Language Specification
+    url: 'https://tc39.es/ecma262/'
+  - title: MDN JavaScript Guide
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide'
 ---
+## 速览
 
-## 原理
+- 本文围绕脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch展开，重点说明async/defer/module、预加载扫描器、preload/prefetch，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch」放回 第 9 章 DOM 与 BOM 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 async、defer、preload、prefetch 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 经典脚本默认会阻塞 HTML 解析：浏览器必须下载并执行脚本，才能继续解析后续文档。预加载扫描器会在主解析器阻塞时尽量发现后面的资源，但它不能理解所有动态生成的依赖。
+
+在前端工程中，脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| async | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| defer | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| preload | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| prefetch | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 脚本形式 | 下载 | 执行 | 顺序 |
 |---|---|---|---|
@@ -36,7 +89,16 @@ lastUpdated: "2026-06-25"
 
 根据 MDN，`defer` 对 module scripts 没有效果，因为模块脚本默认就是延迟执行。
 
-## 用法
+| 脚本形式 | 下载 | 执行 | 顺序 |
+|---|---|---|---|
+| 普通脚本 | 阻塞解析 | 下载后立即执行 | 文档顺序 |
+| `defer` | 不阻塞解析 | DOM 解析完成后执行 | 文档顺序 |
+| `async` | 不阻塞解析 | 下载完成后尽快执行 | 不保证顺序 |
+| `type="module"` | 默认延迟执行 | 支持 import 依赖图 | 模块依赖顺序 |
+
+根据 MDN，`defer` 对 module scripts 没有效果，因为模块脚本默认就是延迟执行。
+
+## 代码示例
 
 应用主脚本使用 defer 或 module：
 
@@ -71,7 +133,7 @@ lastUpdated: "2026-06-25"
 </script>
 ```
 
-## 实践
+## 工程实践
 
 脚本加载策略：
 
@@ -89,7 +151,25 @@ async function loadFeature() {
 }
 ```
 
-## 陷阱
+在真实项目中落地脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -99,8 +179,33 @@ async function loadFeature() {
 | 第三方脚本阻塞主线程 | 延迟加载、隔离、监控 Long Task |
 | 动态插入脚本缺少错误处理 | 监听 `onerror`，提供降级路径 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [MDN: script element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script)
 - [MDN: import maps](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap)
 - [web.dev: Optimize resource loading](https://web.dev/learn/performance/resource-hints)
+- [ECMAScript Language Specification](https://tc39.es/ecma262/)
+- [MDN JavaScript Guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide)

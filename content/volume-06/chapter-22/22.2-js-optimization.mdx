@@ -1,23 +1,96 @@
 ---
-title: "22.2 JavaScript 执行优化：任务切分、主线程让步、避免长任务"
-description: "深入解析 JavaScript 事件循环、长任务检测、任务切分策略与主线程调度优化的原理与实战"
-volume: "卷六：性能优化与可观测性"
-chapter: "第 22 章 运行时性能优化"
-section: "22.2"
-tags: ["长任务", "任务切分", "scheduler", "主线程", "事件循环", "INP"]
-difficulty: "进阶"
-prerequisites: ["20.2-core-web-vitals", "22.1-rendering-optimization"]
-related: ["20.2-core-web-vitals", "21.2-code-optimization", "22.3-memory-optimization"]
-crossRefs: ["20.2-core-web-vitals.mdx", "21.2-code-optimization.mdx", "22.3-memory-optimization.mdx"]
-status: "已完成"
-lastUpdated: "2026-06-25"
+title: 22.2 JavaScript 执行优化：任务切分、主线程让步、避免长任务
+description: 深入解析 JavaScript 事件循环、长任务检测、任务切分策略与主线程调度优化的原理与实战
+volume: 卷六：性能优化与可观测性
+chapter: 第 22 章 运行时性能优化
+section: '22.2'
+status: 已完成
+difficulty: 进阶
+lastUpdated: '2026-06-26'
+tags:
+  - 长任务
+  - 任务切分
+  - scheduler
+  - 主线程
+  - 事件循环
+  - INP
+keywords:
+  - 长任务
+  - 任务切分
+  - scheduler
+  - 主线程
+  - 事件循环
+  - INP
+  - JavaScript
+  - 执行优化
+  - 主线程让步
+  - 避免长任务
+summary: >-
+  本文围绕JavaScript 执行优化：任务切分、主线程让步、避免长任务展开，重点说明深入解析 JavaScript
+  事件循环、长任务检测、任务切分策略与主线程调度优化的原理与实战，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解JavaScript 执行优化：任务切分、主线程让步、避免长任务的核心概念、问题背景和适用边界。
+  - 掌握JavaScript 执行优化：任务切分、主线程让步、避免长任务在真实前端工程中的典型用法和验证方式。
+  - 能够识别JavaScript 执行优化：任务切分、主线程让步、避免长任务相关的常见误区，并选择合适的优化或治理策略。
+prerequisites:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 22.1 渲染优化：减少回流重绘、分层、合成友好动画
+    slug: volume-06/chapter-22/22.1-rendering-optimization
+related:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 21.2 代码优化：Tree Shaking / Code Splitting / 懒加载
+    slug: volume-06/chapter-21/21.2-code-optimization
+  - title: 22.3 内存优化：对象生命周期、缓存失控、泄漏定位
+    slug: volume-06/chapter-22/22.3-memory-optimization
+crossRefs:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 21.2 代码优化：Tree Shaking / Code Splitting / 懒加载
+    slug: volume-06/chapter-21/21.2-code-optimization
+  - title: 22.3 内存优化：对象生命周期、缓存失控、泄漏定位
+    slug: volume-06/chapter-22/22.3-memory-optimization
+references:
+  - title: ECMAScript Language Specification
+    url: 'https://tc39.es/ecma262/'
+  - title: MDN JavaScript Guide
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide'
+  - title: MDN JavaScript Typed Arrays
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Typed_arrays'
+  - title: IEEE 754 Floating-Point Arithmetic
+    url: 'https://ieeexplore.ieee.org/document/8766229'
 ---
+## 速览
 
-## 原理
+- 本文围绕JavaScript 执行优化：任务切分、主线程让步、避免长任务展开，重点说明深入解析 JavaScript 事件循环、长任务检测、任务切分策略与主线程调度优化的原理与实战，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「JavaScript 执行优化：任务切分、主线程让步、避免长任务」放回 第 22 章 运行时性能优化 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 长任务、任务切分、scheduler、主线程 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 JavaScript 是单线程语言，所有代码执行、事件处理、渲染更新都在主线程（Main Thread）上串行进行。当主线程被长时间占用时，用户交互（点击、输入、滚动）无法得到及时响应，动画无法按时渲染，导致明显的卡顿感。理解事件循环（Event Loop）和任务调度机制，是优化 JavaScript 执行性能的基础。
 
 ### 事件循环与任务队列
+
+浏览器的事件循环由以下组件构成：
+
+**调用栈（Call Stack）**
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 长任务 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 任务切分 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| scheduler | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 主线程 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 事件循环 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 浏览器的事件循环由以下组件构成：
 
@@ -91,7 +164,75 @@ React 18 引入了并发渲染（Concurrent Rendering），将渲染工作拆分
 
 `useTransition` 和 `useDeferredValue` 是 React 提供的并发 API，允许开发者将低优先级更新标记为可中断的。
 
-## 用法
+同步 JavaScript 代码在调用栈上执行。函数调用被推入栈顶，执行完毕后弹出。调用栈是单线程的，同一时间只能执行一个函数。
+
+**任务队列（Task Queue / Macrotask Queue）**
+
+异步回调（如 `setTimeout`、`setInterval`、I/O 回调、UI 渲染事件）在任务队列中等待。当调用栈为空时，事件循环从任务队列中取出一个任务执行。
+
+**微任务队列（Microtask Queue）**
+
+`Promise.then`、`MutationObserver`、`queueMicrotask` 产生的回调进入微任务队列。微任务的优先级高于任务队列——当前任务执行完毕后，事件循环会清空所有微任务，然后再取下一个任务。
+
+**渲染时机**
+
+浏览器在每次事件循环迭代后检查是否需要渲染。若距离上一帧已超过 16.67ms（60fps 预算），浏览器会执行样式计算、布局和绘制。这意味着：**长任务会延迟渲染，导致掉帧**。
+
+### 长任务（Long Task）的定义与影响
+
+浏览器将占用主线程超过 50ms 的任务定义为"长任务"（Long Task）。长任务的危害不仅在于其本身的执行时间，更在于它会**阻塞其后所有任务和渲染的执行**。
+
+**长任务的常见来源：**
+
+- 大型数组的 `map`/`filter`/`reduce` 操作
+- 大量 DOM 节点的创建、插入或删除
+- 复杂的正则表达式匹配（回溯灾难）
+- JSON 的 `parse`/`stringify` 处理大数据
+- 第三方脚本的同步执行（如分析、广告、客服插件）
+- React/Vue 的大型组件树更新和重渲染
+
+**长任务对 INP 的影响：**
+
+INP（Interaction to Next Paint）测量交互到下一次绘制的完整时间。若用户点击时主线程正在执行一个 200ms 的长任务：
+- Input Delay = 200ms（等待长任务完成）
+- Processing Time = 事件处理函数执行时间
+- Presentation Delay = 样式计算和渲染时间
+
+长任务直接贡献了 Input Delay，是 INP 劣化的首要原因。
+
+### 任务切分（Task Yielding）的原理
+
+任务切分的核心思想是：将一个长任务拆分为多个短任务，在每个短任务之间让出主线程，让浏览器有机会处理用户输入和渲染。
+
+**时间切片（Time Slicing）的预算：**
+
+RAIL 模型建议每个任务控制在 50ms 以内，为渲染留出至少 16ms 的缓冲。但在实际切分中，更保守的目标是将每个切片控制在 **10~20ms**，确保在密集任务序列中仍有足够的渲染时间。
+
+**任务切分的实现机制：**
+
+1. **`setTimeout(fn, 0)`**：将任务推迟到下一个事件循环迭代。最小延迟通常为 4ms（HTML5 规范限制）。
+2. **`requestIdleCallback`**：在浏览器空闲时执行任务，但可能长时间不被调用。
+3. **`scheduler.yield()`**（Chrome 115+）：显式让出主线程，将当前任务的剩余部分安排到下一个事件循环迭代。
+4. **`MessageChannel`**：比 `setTimeout` 更精确的微任务级别调度。
+5. **`requestAnimationFrame`**：与渲染周期对齐，适合需要在下一帧前完成的任务。
+
+### React 的并发特性与调度
+
+React 18 引入了并发渲染（Concurrent Rendering），将渲染工作拆分为多个小单元（Unit of Work），在每次单元后检查是否有更高优先级的任务（如用户输入）需要处理。
+
+**Scheduler 的优先级模型：**
+
+| 优先级 | 场景 | 是否可中断 |
+|--------|------|-----------|
+| ImmediatePriority | 用户输入（点击、键盘） | 否 |
+| UserBlockingPriority | 用户阻塞操作（滚动、拖拽） | 是 |
+| NormalPriority | 普通状态更新（setState） | 是 |
+| LowPriority | 数据分析、日志上报 | 是 |
+| IdlePriority | 预加载、非关键工作 | 是 |
+
+`useTransition` 和 `useDeferredValue` 是 React 提供的并发 API，允许开发者将低优先级更新标记为可中断的。
+
+## 代码示例
 
 ### 使用 scheduler.yield() 切分长任务
 
@@ -271,7 +412,7 @@ const observer = new PerformanceObserver((list) => {
 observer.observe({ entryTypes: ['longtask'] });
 ```
 
-## 实践
+## 工程实践
 
 ### 案例：大数据表格排序优化
 
@@ -328,7 +469,25 @@ function DataTable() {
 | 非关键后台任务 | 空闲时执行 | `requestIdleCallback` |
 | 第三方脚本加载 | 延迟到交互后加载 | `defer` / 动态注入 |
 
-## 陷阱
+在真实项目中落地JavaScript 执行优化：任务切分、主线程让步、避免长任务时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地JavaScript 执行优化：任务切分、主线程让步、避免长任务时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 描述 | 后果 |
 |------|------|------|
@@ -367,3 +526,33 @@ function DataTable() {
   correctIndex={1}
   explanation="useTransition 将包裹的状态更新标记为低优先级的过渡（Transition）。React 的并发渲染器会将这些更新拆分为小单元，在每次单元后检查是否有更高优先级的任务（如用户输入）。如果有，React 会暂停当前过渡，优先处理高优先级任务，从而保持交互响应性。"
 />
+
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | JavaScript 执行优化：任务切分、主线程让步、避免长任务的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习JavaScript 执行优化：任务切分、主线程让步、避免长任务时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把JavaScript 执行优化：任务切分、主线程让步、避免长任务从知识点转化为可落地的工程判断。"}
+/>
+
+## 参考资料
+
+- [ECMAScript Language Specification](https://tc39.es/ecma262/)
+- [MDN JavaScript Guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide)
+- [MDN JavaScript Typed Arrays](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Typed_arrays)
+- [IEEE 754 Floating-Point Arithmetic](https://ieeexplore.ieee.org/document/8766229)

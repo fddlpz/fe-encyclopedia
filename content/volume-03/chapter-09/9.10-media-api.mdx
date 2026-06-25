@@ -1,31 +1,93 @@
 ---
-title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
-description: "Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
-volume: "卷三：浏览器与运行时"
-chapter: "第 9 章 DOM 与 BOM"
-section: "9.10"
-tags: ["Canvas", "WebGL", "WebRTC", "WebGPU"]
-difficulty: "基础"
-status: "已完成"
+title: 9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC
+description: Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC
+volume: 卷三：浏览器与运行时
+chapter: 第 9 章 DOM 与 BOM
+section: '9.10'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - Canvas
+  - WebGL
+  - WebRTC
+  - WebGPU
+keywords:
+  - Canvas
+  - WebGL
+  - WebRTC
+  - WebGPU
+  - 多媒体
+  - API
+  - 2D
+  - Web
+  - Audio
+  - getUserMedia
+summary: >-
+  本文围绕多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC展开，重点说明Canvas
+  2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - >-
+    理解多媒体 API：Canvas 2D、WebGL/WebGPU、Web
+    Audio、getUserMedia、WebRTC的核心概念、问题背景和适用边界。
+  - >-
+    掌握多媒体 API：Canvas 2D、WebGL/WebGPU、Web
+    Audio、getUserMedia、WebRTC在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别多媒体 API：Canvas 2D、WebGL/WebGPU、Web
+    Audio、getUserMedia、WebRTC相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
-    slug: "volume-03/chapter-09/9.9-workers"
-  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
-    slug: "volume-03/chapter-09/9.11-performance-api"
-  - title: "9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API"
-    slug: "volume-03/chapter-09/9.8-file-binary"
+  - title: 9.9 Workers：Web Worker、Service Worker、Worklet
+    slug: volume-03/chapter-09/9.9-workers
+  - title: 9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API
+    slug: volume-03/chapter-09/9.11-performance-api
+  - title: 9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API
+    slug: volume-03/chapter-09/9.8-file-binary
 crossRefs:
-  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
-    slug: "volume-03/chapter-09/9.9-workers"
-  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
-    slug: "volume-03/chapter-09/9.11-performance-api"
-lastUpdated: "2026-06-25"
+  - title: 9.9 Workers：Web Worker、Service Worker、Worklet
+    slug: volume-03/chapter-09/9.9-workers
+  - title: 9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API
+    slug: volume-03/chapter-09/9.11-performance-api
+references:
+  - title: 'MDN: Canvas API'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API'
+  - title: 'MDN: MediaDevices.getUserMedia'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia'
+  - title: 'W3C: Media Capture and Streams'
+    url: 'https://www.w3.org/TR/mediacapture-streams/'
+  - title: 'WebRTC: Media devices'
+    url: 'https://webrtc.org/getting-started/media-devices'
+  - title: 'MDN: WebGPU API'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API'
+  - title: HTML Living Standard
+    url: 'https://html.spec.whatwg.org/'
 ---
+## 速览
 
-## 原理
+- 本文围绕多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC展开，重点说明Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC」放回 第 9 章 DOM 与 BOM 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Canvas、WebGL、WebRTC、WebGPU 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 多媒体 API 覆盖绘图、音频、视频、摄像头、麦克风和实时通信：
+
+在前端工程中，多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Canvas | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| WebGL | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| WebRTC | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| WebGPU | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | API | 能力 |
 |---|---|
@@ -37,7 +99,17 @@ lastUpdated: "2026-06-25"
 
 这些 API 通常要求安全上下文、用户授权或明确用户手势。媒体设备权限必须按失败路径设计，不应假设用户一定授权。
 
-## 用法
+| API | 能力 |
+|---|---|
+| Canvas 2D | 位图绘制、图像处理、截图 |
+| WebGL/WebGPU | GPU 图形和通用计算 |
+| Web Audio | 音频节点图、分析、合成 |
+| MediaDevices | 摄像头、麦克风、屏幕采集 |
+| WebRTC | 实时音视频和 DataChannel |
+
+这些 API 通常要求安全上下文、用户授权或明确用户手势。媒体设备权限必须按失败路径设计，不应假设用户一定授权。
+
+## 代码示例
 
 Canvas DPR 适配：
 
@@ -89,7 +161,7 @@ oscillator.connect(audioContext.destination)
 oscillator.start()
 ```
 
-## 实践
+## 工程实践
 
 多媒体工程要关注：
 
@@ -100,7 +172,25 @@ oscillator.start()
 
 实时音视频应把信令、媒体采集、连接状态、网络质量和设备切换拆开治理。WebRTC 不是“一个 API 调完就通话”，它还需要 STUN/TURN、编码策略和重连策略。
 
-## 陷阱
+在真实项目中落地多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见问题 | 处理建议 |
 |---|---|
@@ -110,6 +200,29 @@ oscillator.start()
 | 自动播放失败 | 需要用户手势和浏览器策略配合 |
 | WebRTC 只测内网 | 真实网络必须配置 TURN 和弱网测试 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [MDN: Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
@@ -117,3 +230,4 @@ oscillator.start()
 - [W3C: Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/)
 - [WebRTC: Media devices](https://webrtc.org/getting-started/media-devices)
 - [MDN: WebGPU API](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)
+- [HTML Living Standard](https://html.spec.whatwg.org/)

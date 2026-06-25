@@ -1,23 +1,87 @@
 ---
-title: "21.6 缓存策略"
-description: "深入解析 HTTP 缓存、Service Worker 离线缓存、CDN 缓存策略与缓存失效机制的原理与实战"
-volume: "卷六：性能优化与可观测性"
-chapter: "第 21 章 加载性能优化"
-section: "21.6"
-tags: ["缓存", "Cache", "Service Worker", "PWA", "HTTP Cache", "CDN 缓存"]
-difficulty: "进阶"
-prerequisites: ["21.5-network-optimization"]
-related: ["21.2-code-optimization", "21.5-network-optimization", "21.7-rendering-modes"]
-crossRefs: ["21.2-code-optimization.mdx", "21.5-network-optimization.mdx", "21.7-rendering-modes.mdx"]
-status: "已完成"
-lastUpdated: "2026-06-25"
+title: 21.6 缓存策略
+description: 深入解析 HTTP 缓存、Service Worker 离线缓存、CDN 缓存策略与缓存失效机制的原理与实战
+volume: 卷六：性能优化与可观测性
+chapter: 第 21 章 加载性能优化
+section: '21.6'
+status: 已完成
+difficulty: 进阶
+lastUpdated: '2026-06-26'
+tags:
+  - 缓存
+  - Cache
+  - Service Worker
+  - PWA
+  - HTTP Cache
+  - CDN 缓存
+keywords:
+  - 缓存
+  - Cache
+  - Service Worker
+  - PWA
+  - HTTP Cache
+  - CDN 缓存
+  - 缓存策略
+summary: >-
+  本文围绕缓存策略展开，重点说明深入解析 HTTP 缓存、Service Worker 离线缓存、CDN
+  缓存策略与缓存失效机制的原理与实战，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解缓存策略的核心概念、问题背景和适用边界。
+  - 掌握缓存策略在真实前端工程中的典型用法和验证方式。
+  - 能够识别缓存策略相关的常见误区，并选择合适的优化或治理策略。
+prerequisites:
+  - title: 21.5 网络优化：HTTP/3 / CDN / Brotli
+    slug: volume-06/chapter-21/21.5-network-optimization
+related:
+  - title: 21.2 代码优化：Tree Shaking / Code Splitting / 懒加载
+    slug: volume-06/chapter-21/21.2-code-optimization
+  - title: 21.5 网络优化：HTTP/3 / CDN / Brotli
+    slug: volume-06/chapter-21/21.5-network-optimization
+  - title: 21.7 渲染模式：CSR / SSR / SSG / ISR / Streaming SSR
+    slug: volume-06/chapter-21/21.7-rendering-modes
+crossRefs:
+  - title: 21.2 代码优化：Tree Shaking / Code Splitting / 懒加载
+    slug: volume-06/chapter-21/21.2-code-optimization
+  - title: 21.5 网络优化：HTTP/3 / CDN / Brotli
+    slug: volume-06/chapter-21/21.5-network-optimization
+  - title: 21.7 渲染模式：CSR / SSR / SSG / ISR / Streaming SSR
+    slug: volume-06/chapter-21/21.7-rendering-modes
+references:
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
 ---
+## 速览
 
-## 原理
+- 本文围绕缓存策略展开，重点说明深入解析 HTTP 缓存、Service Worker 离线缓存、CDN 缓存策略与缓存失效机制的原理与实战，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「缓存策略」放回 第 21 章 加载性能优化 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 缓存、Cache、Service Worker、PWA 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 缓存是性能优化中最具杠杆效应的手段——一次网络请求可能需要数百毫秒，而从本地缓存读取只需数毫秒。Web 缓存体系是一个多层架构，从浏览器内存到 Service Worker 再到 CDN 边缘节点，每一层都有其特定的适用场景和一致性语义。
 
 ### HTTP 缓存机制
+
+HTTP 缓存通过 `Cache-Control`、`Expires`、`ETag` 和 `Last-Modified` 等头部控制。浏览器在发起请求前，首先检查本地缓存是否可用。
+
+**强缓存（Strong Validation）：**
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 缓存 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Cache | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Service Worker | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| PWA | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| HTTP Cache | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 HTTP 缓存通过 `Cache-Control`、`Expires`、`ETag` 和 `Last-Modified` 等头部控制。浏览器在发起请求前，首先检查本地缓存是否可用。
 
@@ -90,7 +154,74 @@ CDN 根据请求特征生成缓存键，默认通常包含：
 
 可通过 `Vary` 头或 CDN 配置扩展缓存键，但每增加一个维度都会降低缓存命中率。
 
-## 用法
+强缓存下，浏览器完全不发送网络请求，直接使用本地缓存副本。
+
+- `Cache-Control: max-age=3600`：资源在 3600 秒内有效
+- `Cache-Control: immutable`：资源永远不会改变（配合长期 max-age 使用）
+- `Expires: Wed, 21 Oct 2026 07:28:00 GMT`：绝对过期时间（已被 max-age 取代）
+
+**协商缓存（Weak Validation）：**
+
+当强缓存过期后，浏览器携带缓存验证信息发起条件请求：
+
+- `ETag: "33a64df5"` + `If-None-Match: "33a64df5"`：服务器比较 ETag，若匹配返回 304 Not Modified
+- `Last-Modified: Wed, 21 Oct 2025 07:28:00 GMT` + `If-Modified-Since`：基于修改时间的验证，精度仅为秒级
+
+ETag 比 Last-Modified 更精确，因为它可以检测内容级别的变化（如服务器重启后文件内容未变但时间戳更新）。
+
+**Cache-Control 指令的完整语义：**
+
+| 指令 | 含义 | 典型使用场景 |
+|------|------|-------------|
+| `no-store` | 禁止任何缓存 | 敏感数据、实时交易 |
+| `no-cache` | 可以缓存，但必须重新验证 | 频繁更新的 API |
+| `max-age=0` | 立即过期，等价于 no-cache | 开发调试 |
+| `private` | 仅浏览器可缓存，CDN 不可 | 用户个性化内容 |
+| `public` | 任何缓存都可存储 | 静态资源 |
+| `immutable` | 内容永不变，无需条件请求 | 带 hash 的文件名 |
+| `s-maxage=3600` | CDN/共享缓存的 max-age | 覆盖浏览器缓存策略 |
+| `stale-while-revalidate=86400` | 过期后 24h 内仍可使用旧缓存，同时后台更新 | 非关键实时数据 |
+
+### Service Worker 与离线缓存
+
+Service Worker 是浏览器在后台运行的脚本，可拦截网络请求、管理缓存和实现离线体验。它运行在独立的 Worker 线程，不阻塞主线程。
+
+**Service Worker 的生命周期：**
+
+1. **注册（Register）**：页面调用 `navigator.serviceWorker.register('/sw.js')`
+2. **安装（Install）**：浏览器下载 SW 脚本，触发 `install` 事件。在此阶段预缓存核心资源。
+3. **等待（Waiting）**：若已有激活的 SW，新 SW 进入等待状态，直到所有旧版本页面关闭。
+4. **激活（Activate）**：新 SW 接管页面，触发 `activate` 事件。在此阶段清理旧缓存。
+5. **运行（Fetch）**：SW 拦截页面发出的所有网络请求，决定从缓存读取或转发到网络。
+
+**缓存策略模式：**
+
+| 策略 | 描述 | 适用场景 |
+|------|------|----------|
+| Cache First | 优先读缓存，未命中再请求网络 | 静态资源（JS/CSS/图片） |
+| Network First | 优先请求网络，失败回退缓存 | API 请求、实时数据 |
+| Stale While Revalidate | 立即返回缓存，后台请求网络更新 | 新闻列表、内容页 |
+| Network Only | 只请求网络，不读缓存 | 敏感操作、支付 |
+| Cache Only | 只读缓存，不请求网络 | 离线应用的核心资源 |
+
+### CDN 缓存层级
+
+CDN 缓存通常分为三层：
+
+1. **边缘缓存（Edge Cache）**：最接近用户的节点，TTL 通常较短（分钟级到小时级）
+2. **区域缓存（Regional Cache）**：覆盖较大地理区域，TTL 中等
+3. **源站缓存（Origin Shield）**：位于源站前的专用缓存层，减少源站压力
+
+**缓存键（Cache Key）的构成：**
+
+CDN 根据请求特征生成缓存键，默认通常包含：
+- URL 路径和查询字符串
+- Host 头
+- 部分情况下包含 `Accept-Encoding`
+
+可通过 `Vary` 头或 CDN 配置扩展缓存键，但每增加一个维度都会降低缓存命中率。
+
+## 代码示例
 
 ### Nginx 缓存配置最佳实践
 
@@ -308,7 +439,7 @@ module.exports = {
 npx workbox-cli generateSW workbox-config.js
 ```
 
-## 实践
+## 工程实践
 
 ### 案例：PWA 离线缓存策略设计
 
@@ -342,7 +473,25 @@ npx workbox-cli generateSW workbox-config.js
 | API 详情 | 短期 max-age + ETag | 内容更新时 ETag 变化 |
 | 用户数据 | `private, no-store` | 不缓存 |
 
-## 陷阱
+在真实项目中落地缓存策略时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地缓存策略时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 描述 | 后果 |
 |------|------|------|
@@ -382,3 +531,31 @@ Service Worker 的更新机制是 Web 开发中最容易出错的环节之一。
   correctIndex={1}
   explanation="content-hash 基于文件内容生成。当文件内容不变时，hash 不变，浏览器/CDN 可无限期缓存；当文件更新时，hash 改变，URL 改变，浏览器将其视为全新资源。这实现了'长期缓存'和'即时失效'的完美结合，无需依赖复杂的缓存清除机制。"
 />
+
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 缓存策略的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习缓存策略时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把缓存策略从知识点转化为可落地的工程判断。"}
+/>
+
+## 参考资料
+
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)

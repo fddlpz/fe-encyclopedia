@@ -1,31 +1,93 @@
 ---
-title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
-description: "video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 4 章 HTML 全景"
-section: "4.5"
-tags: ["多媒体", "Video", "Audio", "响应式图片"]
-difficulty: "基础"
-status: "已完成"
+title: 4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片
+description: video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片
+volume: 卷二：Web 标准与语言规范
+chapter: 第 4 章 HTML 全景
+section: '4.5'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - 多媒体
+  - Video
+  - Audio
+  - 响应式图片
+keywords:
+  - 多媒体
+  - Video
+  - Audio
+  - 响应式图片
+  - video
+  - audio
+  - 属性与事件
+  - WebVTT
+  - 字幕
+  - picture
+  - source
+summary: >-
+  本文围绕多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片展开，重点说明video/audio
+  属性与事件、WebVTT 字幕、picture 与 source、响应式图片，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片的核心概念、问题背景和适用边界。
+  - 掌握多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与
+    source、响应式图片相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
-    slug: "volume-02/chapter-04/4.4-forms"
-  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
-    slug: "volume-02/chapter-04/4.6-a11y"
-  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
-    slug: "volume-02/chapter-04/4.3-semantic"
+  - title: 4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output
+    slug: volume-02/chapter-04/4.4-forms
+  - title: 4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG
+    slug: volume-02/chapter-04/4.6-a11y
+  - title: >-
+      4.3
+      语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary
+    slug: volume-02/chapter-04/4.3-semantic
 crossRefs:
-  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
-    slug: "volume-02/chapter-04/4.4-forms"
-  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
-    slug: "volume-02/chapter-04/4.6-a11y"
-lastUpdated: "2026-06-25"
+  - title: 4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output
+    slug: volume-02/chapter-04/4.4-forms
+  - title: 4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG
+    slug: volume-02/chapter-04/4.6-a11y
+references:
+  - title: 'WHATWG HTML: Media elements'
+    url: 'https://html.spec.whatwg.org/multipage/media.html'
+  - title: 'W3C: WebVTT'
+    url: 'https://www.w3.org/TR/webvtt1/'
+  - title: 'WAI: Captions/Subtitles'
+    url: 'https://www.w3.org/WAI/media/av/captions/'
+  - title: 'MDN: Responsive images'
+    url: >-
+      https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content/HTML_images/Responsive_images
+  - title: HTML Living Standard
+    url: 'https://html.spec.whatwg.org/'
+  - title: MDN Web Docs
+    url: 'https://developer.mozilla.org/en-US/docs/Web'
 ---
+## 速览
 
-## 原理
+- 本文围绕多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片展开，重点说明video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片」放回 第 4 章 HTML 全景 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 多媒体、Video、Audio、响应式图片 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 HTML 多媒体能力覆盖音视频播放、字幕轨道、响应式图片和格式回退。它的核心价值是把资源选择、播放控制、字幕呈现和可访问性入口交给浏览器，而不是全部用脚本重做。
+
+在前端工程中，多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 多媒体 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Video | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Audio | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 响应式图片 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 元素或能力 | 作用 | 关键点 |
 |---|---|---|
@@ -38,7 +100,18 @@ HTML 多媒体能力覆盖音视频播放、字幕轨道、响应式图片和格
 
 多媒体不是只关心“能不能播”。真实项目还要考虑首屏性能、自动播放策略、带宽、字幕、海报图、错误恢复和无障碍。浏览器通常会限制带声音的自动播放；静音、用户手势、站点历史行为和平台策略都会影响播放结果。
 
-## 用法
+| 元素或能力 | 作用 | 关键点 |
+|---|---|---|
+| `video` | 播放视频或带字幕的媒体 | `controls`、`poster`、`preload`、`playsinline` |
+| `audio` | 播放音频 | 同样支持 `controls`、`preload` 和事件 |
+| `source` | 提供多个媒体源或格式 | 浏览器选择第一个可用格式 |
+| `track` | 外部定时文本轨道 | 字幕、说明、章节、元数据 |
+| `picture` | 根据媒体条件和格式选择图片 | 响应式和现代图片格式 |
+| `srcset` / `sizes` | 按像素密度或布局宽度选择图片 | 减少过大图片下载 |
+
+多媒体不是只关心“能不能播”。真实项目还要考虑首屏性能、自动播放策略、带宽、字幕、海报图、错误恢复和无障碍。浏览器通常会限制带声音的自动播放；静音、用户手势、站点历史行为和平台策略都会影响播放结果。
+
+## 代码示例
 
 视频基础写法：
 
@@ -96,7 +169,7 @@ WEBVTT
 
 `width` 和 `height` 可帮助浏览器预留布局空间，减少 CLS。`alt` 应描述图片内容或用途，装饰图才使用空 `alt=""`。
 
-## 实践
+## 工程实践
 
 多媒体上线检查：
 
@@ -120,7 +193,25 @@ video?.addEventListener("error", () => {
 })
 ```
 
-## 陷阱
+在真实项目中落地多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 风险 | 建议 |
 |---|---|---|
@@ -130,9 +221,34 @@ video?.addEventListener("error", () => {
 | `sizes` 写错 | 浏览器选择过大图片 | 按真实布局宽度配置 |
 | 只测试一种浏览器 | 媒体格式和播放策略差异明显 | 覆盖 Chrome、Safari、Firefox 和移动端 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [WHATWG HTML: Media elements](https://html.spec.whatwg.org/multipage/media.html)
 - [W3C: WebVTT](https://www.w3.org/TR/webvtt1/)
 - [WAI: Captions/Subtitles](https://www.w3.org/WAI/media/av/captions/)
 - [MDN: Responsive images](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content/HTML_images/Responsive_images)
+- [HTML Living Standard](https://html.spec.whatwg.org/)
+- [MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web)

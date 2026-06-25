@@ -1,23 +1,73 @@
 ---
-title: "6.8 迭代器协议：可迭代协议、迭代器协议、Generator、yield*"
-description: "可迭代协议、迭代器协议、Generator、yield*"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 6 章 JavaScript 语言精要"
-section: "6.8"
-tags: ["迭代器", "Generator", "Symbol.iterator", "协议"]
-difficulty: "基础"
-status: "已完成"
+title: 6.8 迭代器协议：可迭代协议、迭代器协议、Generator、yield*
+description: 可迭代协议、迭代器协议、Generator、yield*
+volume: 卷二：Web 标准与语言规范
+chapter: 第 6 章 JavaScript 语言精要
+section: '6.8'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - 迭代器
+  - Generator
+  - Symbol.iterator
+  - 协议
+keywords:
+  - 迭代器
+  - Generator
+  - Symbol.iterator
+  - 协议
+  - 迭代器协议
+  - 可迭代协议
+  - yield*
+summary: >-
+  本文围绕迭代器协议：可迭代协议、迭代器协议、Generator、yield*展开，重点说明可迭代协议、迭代器协议、Generator、yield*，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解迭代器协议：可迭代协议、迭代器协议、Generator、yield*的核心概念、问题背景和适用边界。
+  - 掌握迭代器协议：可迭代协议、迭代器协议、Generator、yield*在真实前端工程中的典型用法和验证方式。
+  - 能够识别迭代器协议：可迭代协议、迭代器协议、Generator、yield*相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
-related: ["6.7-async", "6.9-proxy-reflect"]
+related:
+  - title: 6.7 异步编程：回调、Promise/A+、async/await、异步迭代器与生成器
+    slug: volume-02/chapter-06/6.7-async
+  - title: 6.9 反射与代理：Proxy 拦截器、Reflect API、响应式系统实现、Proxy.revocable
+    slug: volume-02/chapter-06/6.9-proxy-reflect
 crossRefs: []
-lastUpdated: "2026-06-25"
+references:
+  - title: ECMAScript Language Specification
+    url: 'https://tc39.es/ecma262/'
+  - title: MDN JavaScript Guide
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide'
 ---
+## 速览
 
-## 原理
+- 本文围绕迭代器协议：可迭代协议、迭代器协议、Generator、yield*展开，重点说明可迭代协议、迭代器协议、Generator、yield*，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「迭代器协议：可迭代协议、迭代器协议、Generator、yield*」放回 第 6 章 JavaScript 语言精要 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 迭代器、Generator、Symbol.iterator、协议 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 迭代器（Iterator）是 JavaScript 中一套统一的遍历机制，它解耦了遍历行为与数据结构。通过迭代器协议，开发者可以为任何对象定义自定义的遍历逻辑，而无需暴露内部表示。
 
 ### 可迭代协议（Iterable Protocol）
+
+一个对象要实现可迭代协议，必须具有 `Symbol.iterator` 属性，该属性是一个无参函数，返回一个符合迭代器协议的对象。
+
+内置可迭代对象包括：`Array`、`String`、`Map`、`Set`、`TypedArray`、`arguments`、NodeList、`Generator` 对象等。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 迭代器 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Generator | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Symbol.iterator | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 协议 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 一个对象要实现可迭代协议，必须具有 `Symbol.iterator` 属性，该属性是一个无参函数，返回一个符合迭代器协议的对象。
 
@@ -81,7 +131,65 @@ function* gen2() {
 
 V8 引擎对内置可迭代对象（如数组）的迭代有专门优化路径。自定义迭代器若遵循规范精确返回 `{ value, done }` 对象，也能享受较好的性能。但应避免在 `next()` 中执行重型计算或频繁创建临时对象。
 
-## 用法
+### 迭代器协议（Iterator Protocol）
+
+迭代器对象必须实现 `next()` 方法，该方法返回一个包含以下属性的对象：
+
+- `value`：当前迭代项的值。
+- `done`：布尔值，表示迭代是否结束。
+
+```js
+const iterator = {
+  current: 0,
+  last: 5,
+  next() {
+    if (this.current <= this.last) {
+      return { value: this.current++, done: false };
+    }
+    return { value: undefined, done: true };
+  }
+};
+```
+
+### 生成器（Generator）
+
+生成器是 ES6 引入的特殊函数，通过 `function*` 声明。调用生成器函数不立即执行函数体，而是返回一个 `Generator` 对象，该对象同时是可迭代对象也是迭代器。
+
+生成器的核心语义：
+
+- `yield`：暂停执行并返回一个值给调用者，保留当前执行状态（包括变量绑定、执行位置）。
+- `next(value)`：恢复执行，并将 `value` 作为上一个 `yield` 表达式的返回值。
+- `return(value)`：提前终止生成器，返回 `{ value, done: true }`。
+- `throw(error)`：向生成器内抛出一个异常，可在生成器内部用 `try/catch` 捕获。
+
+生成器的执行状态机由引擎在底层维护，开发者无需手动管理状态变量。
+
+### yield* 与委托迭代
+
+`yield*` 用于将迭代工作委托给另一个可迭代对象或生成器：
+
+```js
+function* gen1() {
+  yield 1;
+  yield* gen2();
+  yield 4;
+}
+
+function* gen2() {
+  yield 2;
+  yield 3;
+}
+
+[...gen1()]; // [1, 2, 3, 4]
+```
+
+`yield*` 不仅委托值，还委托 `return()` 和 `throw()` 调用。当被委托的生成器执行 `return` 时，其返回值会成为外层 `yield*` 表达式的值。
+
+### 迭代器与隐藏类优化
+
+V8 引擎对内置可迭代对象（如数组）的迭代有专门优化路径。自定义迭代器若遵循规范精确返回 `{ value, done }` 对象，也能享受较好的性能。但应避免在 `next()` 中执行重型计算或频繁创建临时对象。
+
+## 代码示例
 
 ```js
 // 为对象实现自定义迭代器
@@ -133,7 +241,7 @@ acc.next(10);     // { value: 10, done: false }
 acc.next(5);      // { value: 15, done: false }
 ```
 
-## 实践
+## 工程实践
 
 ### 惰性加载与大数据处理
 
@@ -183,7 +291,25 @@ const firstFive = [...new Range(1, 5)]; // [1,2,3,4,5]
 
 对于无限序列，切勿使用展开运算符或 `Array.from`，否则会导致无限循环。
 
-## 陷阱
+在真实项目中落地迭代器协议：可迭代协议、迭代器协议、Generator、yield*时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地迭代器协议：可迭代协议、迭代器协议、Generator、yield*时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 现象 | 解决方案 |
 |------|------|---------|
@@ -193,18 +319,30 @@ const firstFive = [...new Range(1, 5)]; // [1,2,3,4,5]
 | yield 在箭头函数中不可用 | 语法错误 | 生成器必须使用 `function*` 声明 |
 | 手动迭代忘记检查 done | 最后一次 value 可能为 undefined | 始终检查 `result.done` |
 
-## 测验
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 迭代器协议：可迭代协议、迭代器协议、Generator、yield*的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
 
 <Quiz
-  question="生成器函数调用后返回什么？"
-  options={["生成器函数的执行结果", "一个 Generator 对象（可迭代且是迭代器）", "undefined", "一个 Promise"]}
+  question={"学习迭代器协议：可迭代协议、迭代器协议、Generator、yield*时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
   correctIndex={1}
-  explanation="调用 function* 不会执行函数体，而是返回一个 Generator 对象。该对象实现了迭代器协议，可以通过 next() 控制执行流程。"
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把迭代器协议：可迭代协议、迭代器协议、Generator、yield*从知识点转化为可落地的工程判断。"}
 />
 
-<Quiz
-  question="`yield*` 的主要作用是什么？"
-  options={["终止生成器", "将迭代委托给另一个可迭代对象", "返回一个 Promise", "抛出异常"]}
-  correctIndex={1}
-  explanation="yield* 用于将迭代委托给另一个可迭代对象或生成器，使得外层生成器可以透明地消费内层迭代器的所有值。"
-/>
+## 参考资料
+
+- [ECMAScript Language Specification](https://tc39.es/ecma262/)
+- [MDN JavaScript Guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide)

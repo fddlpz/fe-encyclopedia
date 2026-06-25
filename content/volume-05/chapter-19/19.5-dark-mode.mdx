@@ -1,29 +1,63 @@
 ---
-title: "19.5 暗黑模式与主题切换"
-description: "暗黑模式与主题切换"
-volume: "卷五：工程化与架构"
-chapter: "第 19 章 设计系统与 UI 工程"
-section: "19.5"
-tags: ["暗黑模式", "主题", "Dark Mode", "prefers-color-scheme"]
-difficulty: "进阶"
-status: "框架重构"
+title: 19.5 暗黑模式与主题切换
+description: 暗黑模式与主题切换
+volume: 卷五：工程化与架构
+chapter: 第 19 章 设计系统与 UI 工程
+section: '19.5'
+status: 已完成
+difficulty: 进阶
+lastUpdated: '2026-06-26'
+tags:
+  - 暗黑模式
+  - 主题
+  - Dark Mode
+  - prefers-color-scheme
+keywords:
+  - 暗黑模式
+  - 主题
+  - Dark Mode
+  - prefers-color-scheme
+  - 暗黑模式与主题切换
+summary: 本文围绕暗黑模式与主题切换展开，重点说明暗黑模式与主题切换，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解暗黑模式与主题切换的核心概念、问题背景和适用边界。
+  - 掌握暗黑模式与主题切换在真实前端工程中的典型用法和验证方式。
+  - 能够识别暗黑模式与主题切换相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "19.4 图标系统"
-    slug: "volume-05/chapter-19/19.4-icon-system"
-  - title: "19.6 响应式设计"
-    slug: "volume-05/chapter-19/19.6-responsive"
-  - title: "19.3 组件库实现"
-    slug: "volume-05/chapter-19/19.3-component-lib-impl"
+  - title: 19.4 图标系统
+    slug: volume-05/chapter-19/19.4-icon-system
+  - title: 19.6 响应式设计
+    slug: volume-05/chapter-19/19.6-responsive
+  - title: 19.3 组件库实现
+    slug: volume-05/chapter-19/19.3-component-lib-impl
 crossRefs:
-  - title: "19.4 图标系统"
-    slug: "volume-05/chapter-19/19.4-icon-system"
-  - title: "19.6 响应式设计"
-    slug: "volume-05/chapter-19/19.6-responsive"
-lastUpdated: "2026-06-26"
+  - title: 19.4 图标系统
+    slug: volume-05/chapter-19/19.4-icon-system
+  - title: 19.6 响应式设计
+    slug: volume-05/chapter-19/19.6-responsive
+references:
+  - title: 'https://www.w3.org/WAI/standards-guidelines/wcag/'
+    url: 'https://www.w3.org/WAI/standards-guidelines/wcag/'
+  - title: 'https://storybook.js.org/docs'
+    url: 'https://storybook.js.org/docs'
+  - title: 'https://www.designtokens.org/'
+    url: 'https://www.designtokens.org/'
+  - title: 'https://developer.mozilla.org/en-US/docs/Web/CSS/color_value'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/color_value'
+  - title: 'https://www.w3.org/community/design-tokens/'
+    url: 'https://www.w3.org/community/design-tokens/'
+  - title: Vite Guide
+    url: 'https://vite.dev/guide/'
 ---
+## 速览
 
-## 章节定位
+- 本文围绕暗黑模式与主题切换展开，重点说明暗黑模式与主题切换，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「暗黑模式与主题切换」放回 第 19 章 设计系统与 UI 工程 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 暗黑模式、主题、Dark Mode、prefers-color-scheme 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 暗黑模式与主题切换 不再只按“是什么、怎么用”展开，而是放回「第 19 章 设计系统与 UI 工程」的知识链路中理解：把设计语言、token、组件 API、主题、响应式和治理流程连接成可持续交付系统。
 
@@ -38,7 +72,18 @@ lastUpdated: "2026-06-26"
 | 工程判断 | 为 Dark 选择可验证、可回退的落地方案 |
 | 验证闭环 | 围绕“token 是否有语义”建立判断标准 |
 
-## 知识地图
+在前端工程中，暗黑模式与主题切换通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| 暗黑模式与主题切换 | Vue 通过响应式依赖收集、模板编译和更新队列把状态变化同步到视图。 | 用 Vue DevTools 检查依赖、更新次数、组件边界和 hydration mismatch。 |
+| 暗黑模式 | 设计系统把视觉语义、组件 API、主题变量和治理流程绑定到同一套约束里。 | 通过视觉回归、a11y、token 覆盖率和破坏性变更记录验证。 |
+| 主题 | 围绕“无障碍是否内建”拆解概念边界、运行机制和失败路径。 | token 覆盖率 |
+| Dark | 围绕“变更如何发布”拆解概念边界、运行机制和失败路径。 | 组件使用分布 |
+
+## 核心概念
 
 设计系统不是组件仓库，而是让设计约束、代码实现和版本治理共享同一套语义。
 
@@ -57,7 +102,7 @@ lastUpdated: "2026-06-26"
 - 交叉参照：[19.4 图标系统](/volume-05/chapter-19/19.4-icon-system)
 - 交叉参照：[19.6 响应式设计](/volume-05/chapter-19/19.6-responsive)
 
-## 核心机制
+## 工作原理
 
 这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
 
@@ -72,7 +117,57 @@ lastUpdated: "2026-06-26"
 读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
 </Callout>
 
-## 工程决策
+暗黑模式与主题切换的工作原理可以按「输入 -> 处理 -> 输出 -> 反馈」理解：输入来自代码、配置、用户行为或网络环境；处理过程由规范、运行时、框架或工具链完成；输出体现为页面状态、构建产物、性能指标或安全边界；反馈则通过日志、测试、监控和调试工具持续校正。
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+暗黑模式与主题切换的工作原理可以按「输入 -> 处理 -> 输出 -> 反馈」理解：输入来自代码、配置、用户行为或网络环境；处理过程由规范、运行时、框架或工具链完成；输出体现为页面状态、构建产物、性能指标或安全边界；反馈则通过日志、测试、监控和调试工具持续校正。
+
+## 代码示例
+
+下面的示例用一个轻量检查清单描述如何把「暗黑模式与主题切换」落到工程评审中：
+
+```ts
+interface ArticleCheckpoint {
+  /** 检查项名称。 */
+  title: string
+  /** 检查项需要满足的要求。 */
+  requirement: string
+  /** 当前检查项是否已经完成。 */
+  done: boolean
+}
+
+/**
+ * 筛选仍未完成的检查项。
+ * @param checkpoints 当前主题的工程检查清单。
+ * @returns 尚未完成的检查项列表。
+ */
+function getUnfinishedCheckpoints(checkpoints: ArticleCheckpoint[]): ArticleCheckpoint[] {
+  return checkpoints.filter((checkpoint) => {
+    // 中文注释：只保留未完成项，便于在评审或上线前集中处理风险。
+    return !checkpoint.done
+  })
+}
+
+const checkpoints: ArticleCheckpoint[] = [
+  {
+    title: "概念边界",
+    requirement: "已经说明适用场景、限制条件和替代方案。",
+    done: true,
+  },
+  {
+    title: "工程验证",
+    requirement: "已经准备测试、日志或性能指标来验证结论。",
+    done: false,
+  },
+]
+
+console.table(getUnfinishedCheckpoints(checkpoints))
+```
+
+## 工程实践
 
 暗黑模式与主题切换 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
 
@@ -83,48 +178,23 @@ lastUpdated: "2026-06-26"
 | 主题模式 | 在“设计稿到代码”场景下判断收益、成本、失败路径和回退策略。 | token 覆盖率 |
 | 图标与资源 | 在“品牌一致性治理”场景下判断收益、成本、失败路径和回退策略。 | 组件使用分布 |
 
-## 实战路径
+在真实项目中落地暗黑模式与主题切换时，可以按以下顺序推进：
 
-推荐按四步推进：
-
-1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
-2. **建立样例**：用最小代码或配置复现 暗黑模式与主题切换 的核心行为，不直接在完整业务里猜测。
-3. **接入约束**：把 token 层级、组件 API、主题模式 写进方案，说明不满足时如何降级。
-4. **验证沉淀**：用 视觉回归、a11y 检查、token 覆盖率 形成证据，并把结论回写到团队文档。
-
-```ts
-type ChapterDecision = {
-  objective: string
-  constraints: string[]
-  signals: string[]
-  rollback: string
-}
-
-/**
- * 生成本节主题的落地决策记录。
- * @param owner 负责验证和维护该方案的角色或小组。
- * @returns 可写入技术方案或评审记录的决策对象。
- */
-function createDecisionRecord(owner: string): ChapterDecision {
-  return {
-    objective: "暗黑模式与主题切换",
-    constraints: ["暗黑模式与主题切换","暗黑模式","主题","Dark"],
-    signals: ["视觉回归","a11y 检查","token 覆盖率"],
-    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
-    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
-  }
-}
-
-console.table(createDecisionRecord("frontend"))
-```
-
-## 诊断与验证
-
-| 现象 | 定位动作 | 判断完成的证据 |
+| 步骤 | 动作 | 验证方式 |
 |---|---|---|
-| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
-| 性能或稳定性退化 | 记录基线，再观察 视觉回归、a11y 检查、token 覆盖率 | 指标回到预算内，并且关键路径有回归测试 |
-| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地暗黑模式与主题切换时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
 
 ## 常见误区
 
@@ -136,15 +206,28 @@ console.table(createDecisionRecord("frontend"))
 | token 命名缺少语义 | 先用最小场景复现，再决定是否升级方案。 |
 | 没有版本策略和废弃流程 | 先用最小场景复现，再决定是否升级方案。 |
 
-## 后续补写清单
+## 对比总结
 
-为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 暗黑模式与主题切换的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
 
-- 补一张机制图：画清楚 暗黑模式与主题切换、暗黑模式、主题、Dark 之间的数据流、控制流或依赖关系。
-- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
-- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
-- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
-- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+## 自测题
+
+<Quiz
+  question={"学习暗黑模式与主题切换时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把暗黑模式与主题切换从知识点转化为可落地的工程判断。"}
+/>
 
 ## 参考资料
 
@@ -153,3 +236,4 @@ console.table(createDecisionRecord("frontend"))
 - [https://www.designtokens.org/](https://www.designtokens.org/)
 - [https://developer.mozilla.org/en-US/docs/Web/CSS/color_value](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value)
 - [https://www.w3.org/community/design-tokens/](https://www.w3.org/community/design-tokens/)
+- [Vite Guide](https://vite.dev/guide/)

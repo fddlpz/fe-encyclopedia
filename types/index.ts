@@ -1,14 +1,33 @@
+export type DocStatus = "草稿" | "框架重构" | "基本完成" | "已完成"
+
+export type DocDifficulty = "基础" | "进阶" | "高级"
+
+export interface DocReference {
+  title: string
+  slug: string
+}
+
+export interface ExternalReference {
+  title: string
+  url: string
+}
+
 export interface DocFrontmatter {
   title: string
   description: string
   volume: string
   chapter: string
   section: string
+  status: DocStatus
   tags: string[]
-  difficulty: "基础" | "进阶" | "高级"
-  prerequisites: { title: string; slug: string }[]
-  related: { title: string; slug: string }[]
-  crossRefs: { title: string; slug: string }[]
+  difficulty: DocDifficulty
+  keywords?: string[]
+  summary?: string
+  learningGoals?: string[]
+  prerequisites: DocReference[]
+  related: DocReference[]
+  crossRefs: DocReference[]
+  references?: ExternalReference[]
   lastUpdated: string
 }
 

@@ -1,23 +1,86 @@
 ---
-title: "11.2 JSX 与编译：JSX 转换、Babel 插件、@jsx 注释"
-description: "JSX 转换、Babel 插件、@jsx 注释"
-volume: "卷四：框架与状态管理"
-chapter: "第 11 章 React 原理与生态"
-section: "11.2"
-tags: ["JSX", "Babel", "AST", "编译"]
-difficulty: "基础"
-status: "已完成"
+title: 11.2 JSX 与编译：JSX 转换、Babel 插件、@jsx 注释
+description: JSX 转换、Babel 插件、@jsx 注释
+volume: 卷四：框架与状态管理
+chapter: 第 11 章 React 原理与生态
+section: '11.2'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - JSX
+  - Babel
+  - AST
+  - 编译
+keywords:
+  - JSX
+  - Babel
+  - AST
+  - 编译
+  - 与编译
+  - 转换
+  - 插件
+  - '@jsx'
+  - 注释
+summary: >-
+  本文围绕JSX 与编译：JSX 转换、Babel 插件、@jsx 注释展开，重点说明JSX 转换、Babel 插件、@jsx
+  注释，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解JSX 与编译：JSX 转换、Babel 插件、@jsx 注释的核心概念、问题背景和适用边界。
+  - 掌握JSX 与编译：JSX 转换、Babel 插件、@jsx 注释在真实前端工程中的典型用法和验证方式。
+  - 能够识别JSX 与编译：JSX 转换、Babel 插件、@jsx 注释相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
-related: ["11.1-react-philosophy", "11.6-rendering"]
-crossRefs: ["6.1-js-history"]
-lastUpdated: "2026-06-25"
+related:
+  - title: 11.1 React 设计哲学：声明式 UI、组件化、单向数据流、虚拟 DOM
+    slug: volume-04/chapter-11/11.1-react-philosophy
+  - title: >-
+      11.6 React 渲染机制：Reconciliation、Diff 算法、Fiber 架构、Render Phase vs Commit
+      Phase
+    slug: volume-04/chapter-11/11.6-rendering
+crossRefs:
+  - title: 6.1 JS 历史与标准：ES1-6 里程碑、TC39 流程、ES 年度版本、Babel 转译原理
+    slug: volume-02/chapter-06/6.1-js-history
+references:
+  - title: React Documentation
+    url: 'https://react.dev/'
+  - title: Next.js Documentation
+    url: 'https://nextjs.org/docs'
 ---
+## 速览
 
-## 原理
+- 本文围绕JSX 与编译：JSX 转换、Babel 插件、@jsx 注释展开，重点说明JSX 转换、Babel 插件、@jsx 注释，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「JSX 与编译：JSX 转换、Babel 插件、@jsx 注释」放回 第 11 章 React 原理与生态 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 JSX、Babel、AST、编译 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 JSX（JavaScript XML）是一种 JavaScript 语法扩展，允许在 JavaScript 中编写类似 HTML 的结构。JSX 不是模板引擎，而是纯粹的语法糖，最终会被编译为普通的 JavaScript 函数调用。
 
 ### JSX 的本质
+
+以下 JSX 代码：
+
+```jsx
+const element = (
+  <h1 className="greeting">
+    Hello, {name}!
+  </h1>
+);
+```
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| JSX | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Babel | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| AST | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 编译 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 以下 JSX 代码：
 
@@ -93,7 +156,71 @@ const vnode = <div>Hello</div>; // 编译为 h('div', null, 'Hello')
 
 React 17+ 的自动运行时通过 `/** @jsxImportSource preact */` 指定自定义来源。
 
-## 用法
+经过 Babel 或 TypeScript 编译后，等价于：
+
+```js
+const element = React.createElement(
+  'h1',
+  { className: 'greeting' },
+  'Hello, ',
+  name,
+  '!'
+);
+```
+
+React 17 引入了新的 JSX 转换（JSX Transform），不再需要显式导入 `React`：
+
+```js
+// React 17+ 自动运行时
+import { jsx as _jsx } from 'react/jsx-runtime';
+const element = _jsx('h1', { className: 'greeting', children: 'Hello, world!' });
+```
+
+新转换的优势：
+
+- 无需在每个文件顶部 `import React from 'react'`。
+- 生成的包体积略小（`jsx` 函数的签名更简洁）。
+- 支持通过 Babel 配置自定义 JSX 运行时（如 Preact、Emotion）。
+
+### JSX 编译的 AST 转换
+
+Babel 处理 JSX 时，通过 `@babel/plugin-transform-react-jsx` 插件执行 AST 转换：
+
+1. **解析**：`@babel/parser` 将 JSX 语法解析为特殊的 AST 节点（`JSXElement`、`JSXAttribute`、`JSXExpressionContainer` 等）。
+2. **转换**：访问者遍历 JSX 节点，将其替换为函数调用表达式。
+3. **生成**：输出标准 JavaScript。
+
+JSX 中的表达式插值 `{}` 在 AST 中被解析为 `JSXExpressionContainer`，其内部可以是任意 JavaScript 表达式。
+
+### 关键编译规则
+
+- **标签名以小写字母开头**：编译为字符串字面量（如 `'div'`），表示 HTML 原生元素。
+- **标签名以大写字母开头**：编译为变量引用（如 `MyComponent`），表示自定义组件。
+- **展开属性**：`{...props}` 编译为 `Object.assign` 或对象展开。
+- **条件渲染**：`{condition && <A />}` 是惯用法，但注意 `condition` 为 `0` 时会渲染 `0`。
+
+```jsx
+// 条件渲染陷阱
+{count && <Badge />}
+// 当 count === 0 时，渲染 0 而非不渲染
+// 应改为：{count > 0 && <Badge />} 或 {count ? <Badge /> : null}
+```
+
+### @jsx 注释与自定义运行时
+
+在 Babel 配置不便修改的场景（如单文件测试），可通过文件顶部的注释指定 JSX 运行时：
+
+```jsx
+/** @jsx h */
+/** @jsxFrag Fragment */
+import { h, Fragment } from 'preact';
+
+const vnode = <div>Hello</div>; // 编译为 h('div', null, 'Hello')
+```
+
+React 17+ 的自动运行时通过 `/** @jsxImportSource preact */` 指定自定义来源。
+
+## 代码示例
 
 ```jsx
 // JSX 中的 JavaScript 表达式
@@ -112,7 +239,7 @@ function UserCard({ user }) {
 }
 ```
 
-## 实践
+## 工程实践
 
 ### 列表渲染与 key 属性
 
@@ -135,7 +262,25 @@ const activeNames = data.filter(x => x.active).map(x => x.name).join(', ');
 return <div>{activeNames}</div>;
 ```
 
-## 陷阱
+在真实项目中落地JSX 与编译：JSX 转换、Babel 插件、@jsx 注释时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地JSX 与编译：JSX 转换、Babel 插件、@jsx 注释时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 现象 | 解决方案 |
 |------|------|---------|
@@ -145,18 +290,30 @@ return <div>{activeNames}</div>;
 | `0 && <Component />` | 渲染出 `0` | 使用 `count > 0 &&` 或三元表达式 |
 | 忘记 key 或使用索引 | 列表更新时状态错乱、性能下降 | 使用数据唯一 ID 作为 key |
 
-## 测验
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | JSX 与编译：JSX 转换、Babel 插件、@jsx 注释的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
 
 <Quiz
-  question="React 17 引入的新 JSX 转换相比旧转换的主要改进是什么？"
-  options={["性能提升 50%", "无需显式导入 React", "支持 HTML 模板语法", "移除了虚拟 DOM"]}
+  question={"学习JSX 与编译：JSX 转换、Babel 插件、@jsx 注释时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
   correctIndex={1}
-  explanation="React 17 的新 JSX 转换自动从 react/jsx-runtime 导入 jsx 函数，开发者无需在每个文件顶部写 import React from 'react'。"
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把JSX 与编译：JSX 转换、Babel 插件、@jsx 注释从知识点转化为可落地的工程判断。"}
 />
 
-<Quiz
-  question="JSX 中 `{0 && <div />}` 的渲染结果是什么？"
-  options={["不渲染任何内容", "渲染 <div />", "渲染数字 0", "报错"]}
-  correctIndex={2}
-  explanation="在 JSX 中，0 是 falsy 值，但 && 表达式会返回 0 这个值本身，而 React 会渲染 0。应使用 count > 0 && <div /> 或三元表达式避免此问题。"
-/>
+## 参考资料
+
+- [React Documentation](https://react.dev/)
+- [Next.js Documentation](https://nextjs.org/docs)

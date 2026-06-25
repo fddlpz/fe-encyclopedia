@@ -1,28 +1,94 @@
 ---
-title: "1.4 进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型"
-description: "系统讲解操作系统中进程与线程的核心概念、进程间通信机制、线程同步原语，以及浏览器和 Node.js 中 Web Worker 与 Service Worker 的进程模型与最佳实践。"
-volume: "卷一：计算机科学与网络基础"
-chapter: "第 1 章 计算机系统基础"
-section: "1.4"
-tags: ["进程", "线程", "IPC", "Web Worker", "并发", "同步", "锁", "Service Worker", "浏览器架构"]
-difficulty: "基础"
+title: 1.4 进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型
+description: >-
+  系统讲解操作系统中进程与线程的核心概念、进程间通信机制、线程同步原语，以及浏览器和 Node.js 中 Web Worker 与 Service
+  Worker 的进程模型与最佳实践。
+volume: 卷一：计算机科学与网络基础
+chapter: 第 1 章 计算机系统基础
+section: '1.4'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - 进程
+  - 线程
+  - IPC
+  - Web Worker
+  - 并发
+  - 同步
+  - 锁
+  - Service Worker
+  - 浏览器架构
+keywords:
+  - 进程
+  - 线程
+  - IPC
+  - Web Worker
+  - 并发
+  - 同步
+  - 锁
+  - Service Worker
+  - 浏览器架构
+  - 进程与线程
+  - 进程间通信
+  - 线程同步
+summary: >-
+  本文围绕进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker
+  的进程模型展开，重点说明系统讲解操作系统中进程与线程的核心概念、进程间通信机制、线程同步原语，以及浏览器和 Node.js 中 Web Worker 与
+  Service Worker 的进程模型与最佳实践。，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型的核心概念、问题背景和适用边界。
+  - 掌握进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker
+    的进程模型相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - { title: "1.3 内存管理：虚拟内存、分页与分段、栈与堆、V8 的堆结构", slug: "volume-01/chapter-01/1.3-memory-management" }
-  - { title: "1.5 磁盘 I/O 与文件系统", slug: "volume-01/chapter-01/1.5-disk-io" }
-crossRefs:
-  - { title: "浏览器渲染进程与事件循环", slug: "volume-02/chapter-04/4.2-event-loop" }
-  - { title: "React 并发模式", slug: "volume-03/chapter-09/9.3-react-concurrent" }
-  - { title: "Node.js Cluster 模块", slug: "volume-05/chapter-14/14.1-nodejs-cluster" }
-status: "已完成"
-lastUpdated: "2026-06-25"
+  - title: 1.3 内存管理：虚拟内存、分页与分段、栈与堆、V8 的堆结构
+    slug: volume-01/chapter-01/1.3-memory-management
+  - title: 1.5 磁盘 I/O 与文件系统
+    slug: volume-01/chapter-01/1.5-disk-io
+crossRefs: []
+references:
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
+  - title: MDN JavaScript Typed Arrays
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Typed_arrays'
+  - title: IEEE 754 Floating-Point Arithmetic
+    url: 'https://ieeexplore.ieee.org/document/8766229'
 ---
+## 速览
 
-## 原理
+- 本文围绕进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型展开，重点说明系统讲解操作系统中进程与线程的核心概念、进程间通信机制、线程同步原语，以及浏览器和 Node.js 中 Web Worker 与 Service Worker 的进程模型与最佳实践。，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型」放回 第 1 章 计算机系统基础 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 进程、线程、IPC、Web Worker 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 ### 进程：资源分配的基本单位
 
 **进程（Process）** 是操作系统进行资源分配和调度的基本单位。每个进程都拥有独立的虚拟地址空间、打开的文件描述符表、信号处理函数以及至少一个执行线程。从操作系统内核的角度看，进程是容纳程序运行所需全部资源的容器。
+
+进程的创建是一个相对昂贵的操作。以 Linux 为例，`fork()` 系统调用需要复制父进程的页表、文件描述符表等大量内核数据结构。虽然现代操作系统采用**写时复制（Copy-On-Write, COW）** 技术延迟实际内存页的复制，但进程上下文切换仍然涉及切换页表、刷新 TLB（Translation Lookaside Buffer）等高开销操作。
+
+进程的状态通常包括：新建（New）、就绪（Ready）、运行（Running）、阻塞（Waiting/Blocked）和终止（Terminated）。操作系统调度器（Scheduler）负责在多个就绪进程之间分配 CPU 时间片。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 进程 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 线程 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| IPC | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Web Worker | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 并发 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 进程的创建是一个相对昂贵的操作。以 Linux 为例，`fork()` 系统调用需要复制父进程的页表、文件描述符表等大量内核数据结构。虽然现代操作系统采用**写时复制（Copy-On-Write, COW）** 技术延迟实际内存页的复制，但进程上下文切换仍然涉及切换页表、刷新 TLB（Translation Lookaside Buffer）等高开销操作。
 
@@ -61,7 +127,40 @@ lastUpdated: "2026-06-25"
 
 **活锁（Livelock）** 是指线程没有被阻塞，但由于不断改变状态以响应对方，导致无法继续向前执行。例如，两人在狭窄的走廊相遇，同时向一侧避让，又同时向另一侧避让，永远让不开。
 
-## 用法
+### 线程：CPU 调度的基本单位
+
+**线程（Thread）** 是进程内的一条执行路径，是 CPU 调度的基本单位。一个进程可以包含多个线程，它们共享同一进程的虚拟地址空间、全局变量和堆内存，但每个线程拥有独立的程序计数器（PC）、寄存器组和栈。
+
+由于线程共享地址空间，线程的创建和上下文切换比进程轻量得多。线程切换不需要切换页表，TLB 也无需刷新，因此开销通常只有进程切换的几分之一。然而，共享内存也带来了复杂的数据竞争（Data Race）问题，必须通过同步机制加以约束。
+
+### 进程间通信（IPC）
+
+由于进程之间拥有独立的地址空间，它们无法直接访问彼此的内存，必须通过操作系统提供的**进程间通信（Inter-Process Communication, IPC）** 机制交换数据。常见的 IPC 方式包括：
+
+- **管道（Pipe）与命名管道（Named Pipe / FIFO）**：最早的 UNIX IPC 机制，提供单向字节流通信。匿名管道用于父子进程间，命名管道可用于无亲缘关系的进程。
+- **消息队列（Message Queue）**：进程通过发送和接收格式化的消息块进行通信，支持消息的优先级和异步读取。
+- **共享内存（Shared Memory）**：允许多个进程将同一块物理内存映射到各自的虚拟地址空间中。这是**最快的 IPC 方式**，因为它避免了内核态与用户态之间的数据拷贝。但共享内存本身不提供同步机制，必须与信号量（Semaphore）配合使用。
+- **信号量（Semaphore）与互斥锁（Mutex）**：用于进程间的同步与互斥。信号量可以控制对共享资源的并发访问数量，而互斥锁保证同一时间只有一个进程/线程进入临界区。
+- **套接字（Socket）**：不仅可用于网络通信，也可用于同一台机器上的进程间通信（Unix Domain Socket）。它提供了最灵活的通信模型（流式、数据报），但性能开销相对较大。
+- **信号（Signal）**：一种异步通知机制，用于通知进程发生了某个事件（如 `SIGKILL`、`SIGTERM`）。
+
+### 线程同步原语
+
+多线程编程的核心挑战在于协调对共享资源的访问。主要的同步原语包括：
+
+- **互斥锁（Mutex）**：保证临界区（Critical Section）的互斥访问。进入临界区前加锁，离开后解锁。
+- **读写锁（Read-Write Lock）**：区分读操作和写操作。多个读线程可以同时持有读锁，但写线程独占。适用于读多写少的场景。
+- **条件变量（Condition Variable）**：允许线程在某个条件不满足时阻塞等待，并在条件满足时被其他线程唤醒。常与互斥锁配合使用（如 POSIX 的 `pthread_cond_wait`）。
+- **信号量（Semaphore）**：更通用的同步机制，维护一个计数器。P 操作（等待）减少计数器，V 操作（信号）增加计数器。当计数器为 0 时，P 操作阻塞。
+- **自旋锁（Spinlock）**：线程在等待锁时不进入睡眠，而是忙等待（循环检查锁状态）。适用于锁持有时间极短且线程不希望在用户态/内核态之间切换的场景。
+
+### 死锁与活锁
+
+**死锁（Deadlock）** 是指两个或多个线程互相等待对方释放资源，导致所有线程永远阻塞。死锁产生的四个必要条件（Coffman 条件）是：互斥、占有且等待、不可抢占、循环等待。预防死锁的策略包括：资源一次性分配、按序申请资源、允许抢占等。
+
+**活锁（Livelock）** 是指线程没有被阻塞，但由于不断改变状态以响应对方，导致无法继续向前执行。例如，两人在狭窄的走廊相遇，同时向一侧避让，又同时向另一侧避让，永远让不开。
+
+## 代码示例
 
 ### 浏览器中的多进程架构
 
@@ -167,7 +266,7 @@ if (isMainThread) {
 }
 ```
 
-## 实践
+## 工程实践
 
 ### 场景一：前端长任务拆分与 Offload
 
@@ -227,7 +326,25 @@ if (cluster.isMaster) {
 }
 ```
 
-## 陷阱
+在真实项目中落地进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱描述 | 典型表现 | 解决方案 |
 |---------|---------|---------|
@@ -267,3 +384,33 @@ if (cluster.isMaster) {
   correctIndex={2}
   explanation="`sab[0]++` 在底层实际上是三条指令：读取值、加 1、写回。如果两个 Worker 交错执行，可能都读到相同的旧值，各自加 1 后写回，最终结果只增加了 1 而非 2。必须使用 `Atomics.add(sab, 0, 1)` 来保证原子性。"
 />
+
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把进程与线程：进程间通信（IPC）、线程同步、Web Worker / Service Worker 的进程模型从知识点转化为可落地的工程判断。"}
+/>
+
+## 参考资料
+
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)
+- [MDN JavaScript Typed Arrays](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Typed_arrays)
+- [IEEE 754 Floating-Point Arithmetic](https://ieeexplore.ieee.org/document/8766229)

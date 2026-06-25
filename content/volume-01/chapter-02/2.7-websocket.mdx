@@ -1,33 +1,96 @@
 ---
-title: "2.7 WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比"
-description: "握手过程、帧结构、心跳与重连、与 SSE 的对比"
-volume: "卷一：计算机科学与网络基础"
-chapter: "第 2 章 计算机网络协议"
-section: "2.7"
-tags: ["WebSocket", "SSE", "实时通信", "长连接"]
-difficulty: "基础"
-status: "已完成"
+title: 2.7 WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比
+description: 握手过程、帧结构、心跳与重连、与 SSE 的对比
+volume: 卷一：计算机科学与网络基础
+chapter: 第 2 章 计算机网络协议
+section: '2.7'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - WebSocket
+  - SSE
+  - 实时通信
+  - 长连接
+keywords:
+  - WebSocket
+  - SSE
+  - 实时通信
+  - 长连接
+  - 协议
+  - 握手过程
+  - 帧结构
+  - 心跳与重连
+  - 的对比
+summary: >-
+  本文围绕WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比展开，重点说明握手过程、帧结构、心跳与重连、与 SSE
+  的对比，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比的核心概念、问题背景和适用边界。
+  - 掌握WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比在真实前端工程中的典型用法和验证方式。
+  - 能够识别WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析"
-    slug: "volume-01/chapter-02/2.6-dns"
-  - title: "2.8 其他协议：IP 协议（IPv4/IPv6）、ICMP、ARP、DHCP、SMTP/POP3/IMAP"
-    slug: "volume-01/chapter-02/2.8-other-protocols"
-  - title: "2.5 HTTPS/TLS：对称加密与非对称加密、数字证书、TLS 1.2/1.3 握手"
-    slug: "volume-01/chapter-02/2.5-https-tls"
+  - title: 2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析
+    slug: volume-01/chapter-02/2.6-dns
+  - title: 2.8 其他协议：IP 协议（IPv4/IPv6）、ICMP、ARP、DHCP、SMTP/POP3/IMAP
+    slug: volume-01/chapter-02/2.8-other-protocols
+  - title: 2.5 HTTPS/TLS：对称加密与非对称加密、数字证书、TLS 1.2/1.3 握手
+    slug: volume-01/chapter-02/2.5-https-tls
 crossRefs:
-  - title: "2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析"
-    slug: "volume-01/chapter-02/2.6-dns"
-  - title: "2.8 其他协议：IP 协议（IPv4/IPv6）、ICMP、ARP、DHCP、SMTP/POP3/IMAP"
-    slug: "volume-01/chapter-02/2.8-other-protocols"
-lastUpdated: "2026-06-25"
+  - title: 2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析
+    slug: volume-01/chapter-02/2.6-dns
+  - title: 2.8 其他协议：IP 协议（IPv4/IPv6）、ICMP、ARP、DHCP、SMTP/POP3/IMAP
+    slug: volume-01/chapter-02/2.8-other-protocols
+references:
+  - title: 'RFC 6455: The WebSocket Protocol'
+    url: 'https://datatracker.ietf.org/doc/html/rfc6455'
+  - title: 'RFC 9110: HTTP Semantics'
+    url: 'https://datatracker.ietf.org/doc/html/rfc9110'
+  - title: 'WHATWG HTML: Server-sent events'
+    url: 'https://html.spec.whatwg.org/multipage/server-sent-events.html'
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
 ---
+## 速览
 
-## 原理
+- 本文围绕WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比展开，重点说明握手过程、帧结构、心跳与重连、与 SSE 的对比，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比」放回 第 2 章 计算机网络协议 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 WebSocket、SSE、实时通信、长连接 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 WebSocket 在一次 HTTP/1.1 Upgrade 握手之后，把连接升级为全双工消息通道。它适合浏览器和服务端之间持续双向通信，例如聊天、协同编辑、行情推送、在线状态同步。
 
 握手请求包含几个关键头：
+
+```http
+GET /socket HTTP/1.1
+Host: example.com
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+Origin: https://app.example.com
+```
+
+服务端确认升级：
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| WebSocket | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| SSE | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 实时通信 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 长连接 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 ```http
 GET /socket HTTP/1.1
@@ -54,7 +117,20 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
 WebSocket 借用 HTTP 完成握手，但升级后不是“长轮询 HTTP”。它是一条持续存在的双向连接，必须单独设计鉴权、心跳、重连和限流。
 </Callout>
 
-## 用法
+```http
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+```
+
+升级完成后，通信不再是普通 HTTP 请求响应，而是 WebSocket 帧。帧可以承载文本、二进制、关闭帧、Ping、Pong 等。浏览器端脚本不能直接发送协议级 Ping 帧，因此业务上常用应用层心跳消息。
+
+<Callout type="info" title="WebSocket 和 HTTP 的边界">
+WebSocket 借用 HTTP 完成握手，但升级后不是“长轮询 HTTP”。它是一条持续存在的双向连接，必须单独设计鉴权、心跳、重连和限流。
+</Callout>
+
+## 代码示例
 
 浏览器端最小 WebSocket 客户端如下：
 
@@ -121,7 +197,7 @@ function createSocket(url: string) {
 }
 ```
 
-## 实践
+## 工程实践
 
 WebSocket、SSE 和轮询应按交互模型选择。
 
@@ -141,7 +217,25 @@ WebSocket 上线要重点处理：
 5. **消息幂等**：重连后可能重复订阅或重复收到消息。
 6. **背压**：客户端处理不过来时需要丢弃、合并或降级消息。
 
-## 陷阱
+在真实项目中落地WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 风险 | 建议 |
 |---|---|---|
@@ -151,8 +245,33 @@ WebSocket 上线要重点处理：
 | 把 WebSocket 当消息队列 | 客户端连接不可靠，无法天然保证消息持久化 | 需要 ACK、补偿和离线拉取 |
 | 页面隐藏仍高频推送 | 移动端耗电和后台限制 | 页面隐藏时降低频率或暂停非关键订阅 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [RFC 6455: The WebSocket Protocol](https://datatracker.ietf.org/doc/html/rfc6455)
 - [RFC 9110: HTTP Semantics](https://datatracker.ietf.org/doc/html/rfc9110)
 - [WHATWG HTML: Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)

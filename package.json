@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "generate-index": "tsx scripts/generate-index.ts",
+    "check-content": "tsx scripts/check-content-structure.ts",
+    "migrate-content-v2": "node scripts/migrate-content-v2.js",
     "reframe-content": "node scripts/reframe-content-framework.js"
   },
   "dependencies": {

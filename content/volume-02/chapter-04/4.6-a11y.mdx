@@ -1,33 +1,92 @@
 ---
-title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
-description: "WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 4 章 HTML 全景"
-section: "4.6"
-tags: ["A11y", "ARIA", "WCAG", "无障碍"]
-difficulty: "基础"
-status: "已完成"
+title: 4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG
+description: WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG
+volume: 卷二：Web 标准与语言规范
+chapter: 第 4 章 HTML 全景
+section: '4.6'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - A11y
+  - ARIA
+  - WCAG
+  - 无障碍
+keywords:
+  - A11y
+  - ARIA
+  - WCAG
+  - 无障碍
+  - 可访问性
+  - WAI-ARIA
+  - 屏幕阅读器
+  - 键盘导航
+  - 色彩对比度
+summary: >-
+  本文围绕可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG展开，重点说明WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG的核心概念、问题背景和适用边界。
+  - 掌握可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG在真实前端工程中的典型用法和验证方式。
+  - 能够识别可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
-    slug: "volume-02/chapter-04/4.5-multimedia"
-  - title: "4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots"
-    slug: "volume-02/chapter-04/4.7-web-components"
-  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
-    slug: "volume-02/chapter-04/4.4-forms"
+  - title: 4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片
+    slug: volume-02/chapter-04/4.5-multimedia
+  - title: 4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots
+    slug: volume-02/chapter-04/4.7-web-components
+  - title: 4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output
+    slug: volume-02/chapter-04/4.4-forms
 crossRefs:
-  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
-    slug: "volume-02/chapter-04/4.5-multimedia"
-  - title: "4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots"
-    slug: "volume-02/chapter-04/4.7-web-components"
-lastUpdated: "2026-06-25"
+  - title: 4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片
+    slug: volume-02/chapter-04/4.5-multimedia
+  - title: 4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots
+    slug: volume-02/chapter-04/4.7-web-components
+references:
+  - title: 'W3C: WCAG 2.2'
+    url: 'https://www.w3.org/TR/WCAG22/'
+  - title: 'W3C WAI: ARIA Authoring Practices Guide'
+    url: 'https://www.w3.org/WAI/ARIA/apg/'
+  - title: WAI-ARIA 1.3 Editor's Draft
+    url: 'https://w3c.github.io/aria/'
+  - title: 'MDN: Accessibility'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/Accessibility'
+  - title: HTML Living Standard
+    url: 'https://html.spec.whatwg.org/'
+  - title: MDN Web Docs
+    url: 'https://developer.mozilla.org/en-US/docs/Web'
 ---
+## 速览
 
-## 原理
+- 本文围绕可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG展开，重点说明WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG」放回 第 4 章 HTML 全景 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 A11y、ARIA、WCAG、无障碍 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 可访问性（Accessibility, A11y）是让不同能力、设备和环境下的用户都能理解、操作和完成任务。它不是额外功能，而是 HTML、CSS、交互和内容质量的基本要求。
 
 WCAG 常用四个原则概括可访问性目标：
+
+| 原则 | 含义 | 前端关注点 |
+|---|---|---|
+| Perceivable 可感知 | 信息能被用户感知 | 文本替代、字幕、对比度 |
+| Operable 可操作 | 界面能被用户操作 | 键盘、焦点、时间限制 |
+| Understandable 可理解 | 内容和交互可理解 | 标签、错误提示、一致导航 |
+| Robust 健壮 | 能被多种用户代理和辅助技术解析 | 语义 HTML、ARIA 正确性 |
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| A11y | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| ARIA | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| WCAG | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 无障碍 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 原则 | 含义 | 前端关注点 |
 |---|---|---|
@@ -42,7 +101,13 @@ ARIA 用来补充语义，不用来替代原生元素。能用 `button`、`input
 如果原生 HTML 能表达语义，就不要用 ARIA 重写。错误 ARIA 往往比没有 ARIA 更糟。
 </Callout>
 
-## 用法
+ARIA 用来补充语义，不用来替代原生元素。能用 `button`、`input`、`select`、`dialog` 等原生元素时，优先使用原生元素，因为它们已经内置角色、状态、键盘行为和平台可访问性映射。
+
+<Callout type="warning" title="ARIA 的第一原则">
+如果原生 HTML 能表达语义，就不要用 ARIA 重写。错误 ARIA 往往比没有 ARIA 更糟。
+</Callout>
+
+## 代码示例
 
 可访问名称是控件被辅助技术识别的名称。常见来源包括 `label`、元素文本、`aria-label`、`aria-labelledby`。
 
@@ -82,7 +147,7 @@ function openDialog(dialog: HTMLDialogElement) {
 />
 ```
 
-## 实践
+## 工程实践
 
 可访问性检查清单：
 
@@ -111,7 +176,25 @@ export function IconButton({ label, onClick, children }: IconButtonProps) {
 }
 ```
 
-## 陷阱
+在真实项目中落地可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 风险 | 建议 |
 |---|---|---|
@@ -121,9 +204,34 @@ export function IconButton({ label, onClick, children }: IconButtonProps) {
 | 用颜色唯一表达状态 | 色弱用户和辅助技术无法理解 | 同时提供文本或图标说明 |
 | 弹窗不管理焦点 | 焦点留在背景页面 | 打开聚焦、关闭归还焦点 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [W3C: WCAG 2.2](https://www.w3.org/TR/WCAG22/)
 - [W3C WAI: ARIA Authoring Practices Guide](https://www.w3.org/WAI/ARIA/apg/)
 - [WAI-ARIA 1.3 Editor's Draft](https://w3c.github.io/aria/)
 - [MDN: Accessibility](https://developer.mozilla.org/en-US/docs/Web/Accessibility)
+- [HTML Living Standard](https://html.spec.whatwg.org/)
+- [MDN Web Docs](https://developer.mozilla.org/en-US/docs/Web)

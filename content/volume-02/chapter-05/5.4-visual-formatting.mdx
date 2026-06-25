@@ -1,31 +1,87 @@
 ---
-title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
-description: "display、position、float、z-index、overflow"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 5 章 CSS 完全参考"
-section: "5.4"
-tags: ["Display", "Position", "Float", "布局"]
-difficulty: "基础"
-status: "已完成"
+title: 5.4 视觉格式化模型：display、position、float、z-index、overflow
+description: display、position、float、z-index、overflow
+volume: 卷二：Web 标准与语言规范
+chapter: 第 5 章 CSS 完全参考
+section: '5.4'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - Display
+  - Position
+  - Float
+  - 布局
+keywords:
+  - Display
+  - Position
+  - Float
+  - 布局
+  - 视觉格式化模型
+  - display
+  - position
+  - float
+  - z-index
+  - overflow
+summary: >-
+  本文围绕视觉格式化模型：display、position、float、z-index、overflow展开，重点说明display、position、float、z-index、overflow，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解视觉格式化模型：display、position、float、z-index、overflow的核心概念、问题背景和适用边界。
+  - 掌握视觉格式化模型：display、position、float、z-index、overflow在真实前端工程中的典型用法和验证方式。
+  - 能够识别视觉格式化模型：display、position、float、z-index、overflow相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性"
-    slug: "volume-02/chapter-05/5.3-values-units"
-  - title: "5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid"
-    slug: "volume-02/chapter-05/5.5-modern-layout"
-  - title: "5.2 选择器体系：基础选择器、组合器、伪类、伪元素、Specificity、:is/:where/:has"
-    slug: "volume-02/chapter-05/5.2-selectors"
+  - title: 5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性
+    slug: volume-02/chapter-05/5.3-values-units
+  - title: 5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid
+    slug: volume-02/chapter-05/5.5-modern-layout
+  - title: '5.2 选择器体系：基础选择器、组合器、伪类、伪元素、Specificity、:is/:where/:has'
+    slug: volume-02/chapter-05/5.2-selectors
 crossRefs:
-  - title: "5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性"
-    slug: "volume-02/chapter-05/5.3-values-units"
-  - title: "5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid"
-    slug: "volume-02/chapter-05/5.5-modern-layout"
-lastUpdated: "2026-06-25"
+  - title: 5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性
+    slug: volume-02/chapter-05/5.3-values-units
+  - title: 5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid
+    slug: volume-02/chapter-05/5.5-modern-layout
+references:
+  - title: 'W3C: CSS 2.1 Visual formatting model'
+    url: 'https://www.w3.org/TR/CSS21/visuren.html'
+  - title: 'MDN: display'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/display'
+  - title: 'MDN: position'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/position'
+  - title: 'MDN: overflow'
+    url: 'https://developer.mozilla.org/en-US/docs/Web/CSS/overflow'
+  - title: 'MDN: z-index'
+    url: >-
+      https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/z-index
+  - title: MDN CSS Reference
+    url: 'https://developer.mozilla.org/en-US/docs/Web/CSS'
 ---
+## 速览
 
-## 原理
+- 本文围绕视觉格式化模型：display、position、float、z-index、overflow展开，重点说明display、position、float、z-index、overflow，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「视觉格式化模型：display、position、float、z-index、overflow」放回 第 5 章 CSS 完全参考 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Display、Position、Float、布局 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 视觉格式化模型描述元素盒子如何参与布局、定位和绘制。`display` 决定盒子的内外显示类型，`position` 决定是否脱离普通流或建立定位关系，`float` 是历史图文环绕模型，`overflow` 控制内容溢出和滚动容器，`z-index` 参与层叠顺序。
+
+在前端工程中，视觉格式化模型：display、position、float、z-index、overflow通常不是单独存在的知识点，而是连接语言特性、浏览器能力、框架抽象和工程约束的判断入口。理解它的背景，可以帮助我们回答三个问题：为什么需要这个机制、它解决了什么边界问题，以及在什么场景下不应该过度使用。
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Display | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Position | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| Float | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 布局 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 属性 | 解决的问题 | 关键边界 |
 |---|---|---|
@@ -37,7 +93,17 @@ lastUpdated: "2026-06-25"
 
 `display` 的现代写法可以拆分为外部显示和内部显示，例如 `display: block flex`；日常仍常用 `display: flex`、`grid` 等简写。
 
-## 用法
+| 属性 | 解决的问题 | 关键边界 |
+|---|---|---|
+| `display` | 元素生成什么盒子、内部如何布局 | `block`、`inline`、`flex`、`grid`、`contents` |
+| `position` | 元素如何定位 | `static`、`relative`、`absolute`、`fixed`、`sticky` |
+| `float` | 图文环绕 | 不适合作为现代整体布局系统 |
+| `overflow` | 溢出裁剪、滚动容器 | 会影响 BFC、sticky、滚动链路 |
+| `z-index` | 同层叠上下文内的绘制顺序 | 不能跨层叠上下文比较 |
+
+`display` 的现代写法可以拆分为外部显示和内部显示，例如 `display: block flex`；日常仍常用 `display: flex`、`grid` 等简写。
+
+## 代码示例
 
 定位示例：
 
@@ -75,7 +141,7 @@ lastUpdated: "2026-06-25"
 
 `display: contents` 会让元素本身不生成盒子，但子元素仍参与父级布局；它可能影响可访问性树和语义表达，使用时要验证。
 
-## 实践
+## 工程实践
 
 视觉格式化排查步骤：
 
@@ -98,7 +164,25 @@ lastUpdated: "2026-06-25"
 }
 ```
 
-## 陷阱
+在真实项目中落地视觉格式化模型：display、position、float、z-index、overflow时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地视觉格式化模型：display、position、float、z-index、overflow时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 风险 | 建议 |
 |---|---|---|
@@ -108,6 +192,29 @@ lastUpdated: "2026-06-25"
 | `overflow: hidden` 裁剪浮层 | 下拉、阴影、focus ring 被切掉 | 浮层放到合适层级或避免裁剪 |
 | `display: contents` 滥用 | 语义和可访问性可能受影响 | 关键语义元素慎用 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 视觉格式化模型：display、position、float、z-index、overflow的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习视觉格式化模型：display、position、float、z-index、overflow时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把视觉格式化模型：display、position、float、z-index、overflow从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [W3C: CSS 2.1 Visual formatting model](https://www.w3.org/TR/CSS21/visuren.html)
@@ -115,3 +222,4 @@ lastUpdated: "2026-06-25"
 - [MDN: position](https://developer.mozilla.org/en-US/docs/Web/CSS/position)
 - [MDN: overflow](https://developer.mozilla.org/en-US/docs/Web/CSS/overflow)
 - [MDN: z-index](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/z-index)
+- [MDN CSS Reference](https://developer.mozilla.org/en-US/docs/Web/CSS)

@@ -1,23 +1,78 @@
 ---
-title: "6.11 正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义"
-description: "模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义"
-volume: "卷二：Web 标准与语言规范"
-chapter: "第 6 章 JavaScript 语言精要"
-section: "6.11"
-tags: ["正则", "RegExp", "模式匹配", "断言"]
-difficulty: "基础"
-status: "已完成"
+title: 6.11 正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义
+description: 模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义
+volume: 卷二：Web 标准与语言规范
+chapter: 第 6 章 JavaScript 语言精要
+section: '6.11'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - 正则
+  - RegExp
+  - 模式匹配
+  - 断言
+keywords:
+  - 正则
+  - RegExp
+  - 模式匹配
+  - 断言
+  - 正则表达式
+  - 捕获组
+  - 先行
+  - 后行断言
+  - matchAll
+  - Unicode
+  - 属性转义
+summary: >-
+  本文围绕正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode
+  属性转义展开，重点说明模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义的核心概念、问题背景和适用边界。
+  - 掌握正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义在真实前端工程中的典型用法和验证方式。
+  - 能够识别正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
-related: ["6.10-error-handling", "6.12-intl"]
+related:
+  - title: 6.10 错误处理：try/catch/finally、Error 类型、自定义错误类、错误监控与 Source Map
+    slug: volume-02/chapter-06/6.10-error-handling
+  - title: 6.12 国际化（Intl）：DateTimeFormat、NumberFormat、RelativeTimeFormat、Segmenter
+    slug: volume-02/chapter-06/6.12-intl
 crossRefs: []
-lastUpdated: "2026-06-25"
+references:
+  - title: ECMAScript Language Specification
+    url: 'https://tc39.es/ecma262/'
+  - title: MDN JavaScript Guide
+    url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide'
 ---
+## 速览
 
-## 原理
+- 本文围绕正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义展开，重点说明模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义」放回 第 6 章 JavaScript 语言精要 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 正则、RegExp、模式匹配、断言 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 正则表达式（Regular Expression）是一种描述字符串模式的声明式语言。JavaScript 的正则引擎基于 NFA（非确定有限自动机）回溯实现，支持大部分 PCRE 特性，并在 ES2018 后大幅增强了 Unicode 支持。
 
 ### RegExp 的创建与标志
+
+正则可通过字面量 `/pattern/flags` 或 `new RegExp('pattern', 'flags')` 创建。后者支持动态构建模式，但需要对反斜杠进行双重转义。
+
+标志（Flags）：
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| 正则 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| RegExp | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 模式匹配 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 断言 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 正则可通过字面量 `/pattern/flags` 或 `new RegExp('pattern', 'flags')` 创建。后者支持动态构建模式，但需要对反斜杠进行双重转义。
 
@@ -87,7 +142,71 @@ const chineseRe = /\p{Script=Han}/gu;
 '中文123'.match(chineseRe); // ['中', '文']
 ```
 
-## 用法
+- `g`（global）：全局匹配，找到所有匹配而非第一个。
+- `i`（ignoreCase）：忽略大小写。
+- `m`（multiline）：`^` 和 `$` 匹配每行的开头和结尾。
+- `s`（dotAll，ES2018）：`.` 匹配包括换行符在内的所有字符。
+- `u`（unicode，ES2015）：启用 Unicode 模式，正确处理码点大于 `￿` 的字符。
+- `y`（sticky，ES2015）：粘性匹配，从 `lastIndex` 开始严格匹配。
+- `d`（hasIndices，ES2022）：匹配结果包含每个捕获组的起始/结束索引数组。
+
+### 捕获组与反向引用
+
+圆括号 `(...)` 创建捕获组，匹配结果存储在 `RegExp.$1`、`$2` 或结果数组中。非捕获组 `(?:...)` 仅用于分组，不保存匹配内容。
+
+命名捕获组（ES2018）：`(?<name>...)`，通过 `match.groups.name` 访问。
+
+```js
+const re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+const result = re.exec('2024-03-15');
+console.log(result.groups.year); // '2024'
+```
+
+### 先行断言与后行断言
+
+断言（Assertion）匹配位置而非字符，不消耗输入字符串。
+
+- **正向先行断言**：`x(?=y)`，匹配后面跟着 `y` 的 `x`。
+- **负向先行断言**：`x(?!y)`，匹配后面不跟着 `y` 的 `x`。
+- **正向后行断言**（ES2018）：`(?<=y)x`，匹配前面有 `y` 的 `x`。
+- **负向后行断言**（ES2018）：`(?<!y)x`，匹配前面没有 `y` 的 `x`。
+
+```js
+// 匹配价格数字（前面有 $ 符号）
+const prices = 'Apple $1.50, Banana $0.80';
+const priceRe = /(?<=\$)\d+\.\d+/g;
+prices.match(priceRe); // ['1.50', '0.80']
+```
+
+### matchAll 与迭代器
+
+`String.prototype.matchAll`（ES2020）返回一个迭代器，产出所有匹配结果（包括捕获组信息），避免了 `match` 在全局模式下丢失捕获组的问题。
+
+```js
+const str = 'test1 test2';
+const re = /t(e)(st(\d?))/g;
+
+// match 在 g 模式下返回 ['test1', 'test2']，丢失捕获组
+// matchAll 保留所有信息
+for (const match of str.matchAll(re)) {
+  console.log(match[0], match[1], match[2], match[3]);
+}
+```
+
+### Unicode 属性转义（ES2018）
+
+在 `u` 标志下，可使用 `\p{Property}` 和 `\P{Property}` 匹配 Unicode 字符属性：
+
+```js
+const emojiRe = /\p{Emoji}/gu;
+'Hello 👋 World 🌍'.match(emojiRe); // ['👋', '🌍']
+
+// 匹配所有中文字符
+const chineseRe = /\p{Script=Han}/gu;
+'中文123'.match(chineseRe); // ['中', '文']
+```
+
+## 代码示例
 
 ```js
 // 使用命名捕获组进行 URL 解析
@@ -105,7 +224,7 @@ blocks.forEach(([_, lang, code]) => console.log(lang, code));
 const usernameRe = /^[a-zA-Z0-9_-]{3,20}$/;
 ```
 
-## 实践
+## 工程实践
 
 ### 正则性能优化
 
@@ -130,7 +249,25 @@ badRe.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac'); // 极慢，指数级回溯
 - 在 Node.js 中使用 `console.time` 测量正则执行时间。
 - 对复杂正则添加注释（`new RegExp` 配合字符串拼接）。
 
-## 陷阱
+在真实项目中落地正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 现象 | 解决方案 |
 |------|------|---------|
@@ -140,18 +277,30 @@ badRe.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac'); // 极慢，指数级回溯
 | Unicode 字符被拆分为代理对 | `u` 标志未启用时，😀 被视为两个字符 | 始终对含 Unicode 的正则启用 `u` 标志 |
 | 正则对象的 test 修改 lastIndex | `g` 标志下 test 也推进 lastIndex | 非循环场景避免对同一正则实例混用 test/match/exec |
 
-## 测验
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
 
 <Quiz
-  question="`String.prototype.match` 在全局模式（g）下与 `matchAll` 的主要区别是什么？"
-  options={["match 更快", "match 丢失捕获组信息，matchAll 保留", "matchAll 不支持全局模式", "没有区别"]}
+  question={"学习正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
   correctIndex={1}
-  explanation="match 在全局模式下返回所有匹配的字符串数组，但不包含捕获组信息。matchAll 返回迭代器，每个迭代结果都包含完整的匹配信息和所有捕获组。"
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把正则表达式：模式匹配、捕获组、先行/后行断言、matchAll、Unicode 属性转义从知识点转化为可落地的工程判断。"}
 />
 
-<Quiz
-  question="后行断言 `(?<=\$)\d+` 需要什么条件才能在 JavaScript 中使用？"
-  options={["仅需要 m 标志", "需要 ES2018 支持，通常配合 u 标志", "需要 y 标志", "JavaScript 不支持后行断言"]}
-  correctIndex={1}
-  explanation="正向后行断言 (?<=...) 和负向后行断言 (?<!...) 是 ES2018 引入的特性。在处理 Unicode 内容时，通常建议同时启用 u 标志以确保正确性。"
-/>
+## 参考资料
+
+- [ECMAScript Language Specification](https://tc39.es/ecma262/)
+- [MDN JavaScript Guide](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide)

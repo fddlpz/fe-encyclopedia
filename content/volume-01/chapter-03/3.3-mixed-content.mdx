@@ -1,33 +1,93 @@
 ---
-title: "3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求"
-description: "主动与被动混合内容、升级不安全请求"
-volume: "卷一：计算机科学与网络基础"
-chapter: "第 3 章 Web 安全基础"
-section: "3.3"
-tags: ["Mixed Content", "HTTPS", "安全"]
-difficulty: "基础"
-status: "已完成"
+title: 3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求
+description: 主动与被动混合内容、升级不安全请求
+volume: 卷一：计算机科学与网络基础
+chapter: 第 3 章 Web 安全基础
+section: '3.3'
+status: 已完成
+difficulty: 基础
+lastUpdated: '2026-06-26'
+tags:
+  - Mixed Content
+  - HTTPS
+  - 安全
+keywords:
+  - Mixed Content
+  - HTTPS
+  - 安全
+  - 混合内容
+  - Mixed
+  - Content
+  - 主动与被动混合内容
+  - 升级不安全请求
+summary: >-
+  本文围绕混合内容（Mixed
+  Content）：主动与被动混合内容、升级不安全请求展开，重点说明主动与被动混合内容、升级不安全请求，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求的核心概念、问题背景和适用边界。
+  - 掌握混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求在真实前端工程中的典型用法和验证方式。
+  - 能够识别混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求相关的常见误区，并选择合适的优化或治理策略。
 prerequisites: []
 related:
-  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
-    slug: "volume-01/chapter-03/3.2-csp"
-  - title: "3.4 安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP"
-    slug: "volume-01/chapter-03/3.4-security-headers"
-  - title: "3.1 同源策略（SOP）：源的定义、限制范围、浏览器的沙箱机制"
-    slug: "volume-01/chapter-03/3.1-sop"
+  - title: 3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3
+    slug: volume-01/chapter-03/3.2-csp
+  - title: >-
+      3.4
+      安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP
+    slug: volume-01/chapter-03/3.4-security-headers
+  - title: 3.1 同源策略（SOP）：源的定义、限制范围、浏览器的沙箱机制
+    slug: volume-01/chapter-03/3.1-sop
 crossRefs:
-  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
-    slug: "volume-01/chapter-03/3.2-csp"
-  - title: "3.4 安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP"
-    slug: "volume-01/chapter-03/3.4-security-headers"
-lastUpdated: "2026-06-25"
+  - title: 3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3
+    slug: volume-01/chapter-03/3.2-csp
+  - title: >-
+      3.4
+      安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP
+    slug: volume-01/chapter-03/3.4-security-headers
+references:
+  - title: 'W3C: Mixed Content'
+    url: 'https://www.w3.org/TR/mixed-content/'
+  - title: 'W3C: Upgrade Insecure Requests'
+    url: 'https://www.w3.org/TR/upgrade-insecure-requests/'
+  - title: 'MDN: Mixed content'
+    url: >-
+      https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Mixed_content
+  - title: 'RFC 6797: HTTP Strict Transport Security'
+    url: 'https://datatracker.ietf.org/doc/html/rfc6797'
+  - title: MDN HTTP
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP'
+  - title: IETF RFC Index
+    url: 'https://www.rfc-editor.org/rfc-index.html'
 ---
+## 速览
 
-## 原理
+- 本文围绕混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求展开，重点说明主动与被动混合内容、升级不安全请求，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求」放回 第 3 章 Web 安全基础 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Mixed Content、HTTPS、安全 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 混合内容是指 HTTPS 页面加载 HTTP 资源。HTTPS 保护了主文档，但 HTTP 子资源可能被中间人读取或篡改，因此浏览器会自动升级一部分请求并阻断另一部分请求。
 
 旧资料常把混合内容分成“主动内容”和“被动内容”。现代规范更强调两类：
+
+| 类型 | 浏览器处理 | 示例 |
+|---|---|---|
+| 可升级内容 | 浏览器尝试把 `http://` 自动升级为 `https://` | 部分图片、音频、视频资源 |
+| 可阻断内容 | 浏览器直接阻断或在策略下阻断 | 脚本、样式、iframe、fetch、XHR、字体 |
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Mixed Content | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| HTTPS | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 安全 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 | 类型 | 浏览器处理 | 示例 |
 |---|---|---|
@@ -40,7 +100,13 @@ lastUpdated: "2026-06-25"
 浏览器自动升级或 CSP 的 `upgrade-insecure-requests` 只能帮你尝试改写 URL。如果 HTTPS 资源不存在，请求仍会失败。长期方案是清理所有明文资源来源。
 </Callout>
 
-## 用法
+脚本和样式属于高风险资源，因为一旦被篡改就能执行任意逻辑或改变页面行为；图片虽然通常风险低一些，但仍可能泄露访问路径、破坏隐私或造成内容欺骗。
+
+<Callout type="warning" title="自动升级不是迁移方案">
+浏览器自动升级或 CSP 的 `upgrade-insecure-requests` 只能帮你尝试改写 URL。如果 HTTPS 资源不存在，请求仍会失败。长期方案是清理所有明文资源来源。
+</Callout>
+
+## 代码示例
 
 混合内容最常在 HTTPS 改造、CDN 迁移、富文本内容、第三方 SDK 和历史模板里出现。
 
@@ -80,7 +146,7 @@ export function assertNoInsecureResource(html: string) {
 }
 ```
 
-## 实践
+## 工程实践
 
 HTTPS 全站改造建议按链路推进：
 
@@ -116,7 +182,25 @@ export function normalizeImageUrl(url: string) {
 }
 ```
 
-## 陷阱
+在真实项目中落地混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 常见误区 | 风险 | 建议 |
 |---|---|---|
@@ -126,9 +210,34 @@ export function normalizeImageUrl(url: string) {
 | 过早开启 HSTS includeSubDomains | 子域名未完成 HTTPS 会被强制升级导致不可访问 | 先灰度短 `max-age` |
 | 忽略第三方 SDK | 第三方脚本可能继续拉取 HTTP 子资源 | 建立第三方资源准入清单 |
 
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求从知识点转化为可落地的工程判断。"}
+/>
+
 ## 参考资料
 
 - [W3C: Mixed Content](https://www.w3.org/TR/mixed-content/)
 - [W3C: Upgrade Insecure Requests](https://www.w3.org/TR/upgrade-insecure-requests/)
 - [MDN: Mixed content](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Mixed_content)
 - [RFC 6797: HTTP Strict Transport Security](https://datatracker.ietf.org/doc/html/rfc6797)
+- [MDN HTTP](https://developer.mozilla.org/en-US/docs/Web/HTTP)
+- [IETF RFC Index](https://www.rfc-editor.org/rfc-index.html)

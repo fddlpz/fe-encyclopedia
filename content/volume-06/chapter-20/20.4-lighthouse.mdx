@@ -1,23 +1,91 @@
 ---
-title: "20.4 性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest"
-description: "深入对比 Lighthouse、PageSpeed Insights、WebPageTest 三大性能工具的原理、使用方法和实战技巧"
-volume: "卷六：性能优化与可观测性"
-chapter: "第 20 章 Web 性能指标体系"
-section: "20.4"
-tags: ["Lighthouse", "PageSpeed", "WebPageTest", "性能测试", "CI/CD"]
-difficulty: "进阶"
-prerequisites: ["20.2-core-web-vitals", "20.3-other-metrics"]
-related: ["20.2-core-web-vitals", "20.3-other-metrics", "21.1-resource-priority"]
-crossRefs: ["20.2-core-web-vitals.mdx", "20.3-other-metrics.mdx", "21.1-resource-priority.mdx"]
-status: "已完成"
-lastUpdated: "2026-06-25"
+title: 20.4 性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest
+description: 深入对比 Lighthouse、PageSpeed Insights、WebPageTest 三大性能工具的原理、使用方法和实战技巧
+volume: 卷六：性能优化与可观测性
+chapter: 第 20 章 Web 性能指标体系
+section: '20.4'
+status: 已完成
+difficulty: 进阶
+lastUpdated: '2026-06-26'
+tags:
+  - Lighthouse
+  - PageSpeed
+  - WebPageTest
+  - 性能测试
+  - CI/CD
+keywords:
+  - Lighthouse
+  - PageSpeed
+  - WebPageTest
+  - 性能测试
+  - CI/CD
+  - 性能评分工具
+  - Insights
+summary: >-
+  本文围绕性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest展开，重点说明深入对比
+  Lighthouse、PageSpeed Insights、WebPageTest
+  三大性能工具的原理、使用方法和实战技巧，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+learningGoals:
+  - 理解性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest的核心概念、问题背景和适用边界。
+  - 掌握性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest在真实前端工程中的典型用法和验证方式。
+  - >-
+    能够识别性能评分工具：Lighthouse / PageSpeed Insights /
+    WebPageTest相关的常见误区，并选择合适的优化或治理策略。
+prerequisites:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 20.3 其他关键指标：FCP / TTFB / TBT / TTI / SI
+    slug: volume-06/chapter-20/20.3-other-metrics
+related:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 20.3 其他关键指标：FCP / TTFB / TBT / TTI / SI
+    slug: volume-06/chapter-20/20.3-other-metrics
+  - title: 21.1 资源优先级：preload / prefetch / preconnect
+    slug: volume-06/chapter-21/21.1-resource-priority
+crossRefs:
+  - title: 20.2 Core Web Vitals：LCP / FID / CLS / INP
+    slug: volume-06/chapter-20/20.2-core-web-vitals
+  - title: 20.3 其他关键指标：FCP / TTFB / TBT / TTI / SI
+    slug: volume-06/chapter-20/20.3-other-metrics
+  - title: 21.1 资源优先级：preload / prefetch / preconnect
+    slug: volume-06/chapter-21/21.1-resource-priority
+references:
+  - title: web.dev Performance
+    url: 'https://web.dev/learn/performance/'
+  - title: Chrome Developers Performance
+    url: 'https://developer.chrome.com/docs/performance/'
 ---
+## 速览
 
-## 原理
+- 本文围绕性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest展开，重点说明深入对比 Lighthouse、PageSpeed Insights、WebPageTest 三大性能工具的原理、使用方法和实战技巧，并补充核心机制、代码示例、工程实践、常见误区和参考资料。
+- 阅读重点是把「性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest」放回 第 20 章 Web 性能指标体系 的知识链路中理解，而不是只记忆孤立定义。
+- 工程实践中需要同时关注 Lighthouse、PageSpeed、WebPageTest、性能测试 等关键因素，并用可观察的指标或测试结果验证判断。
+- 如果你已经熟悉前置概念，可以优先阅读「工作原理」「工程实践」和「常见误区」三部分。
+
+## 背景与问题
 
 性能优化需要可量化的反馈循环，而性能评分工具正是这个循环的核心。Lighthouse、PageSpeed Insights 和 WebPageTest 是前端性能工程中最常用的三大工具，它们分别代表了"本地实验室测试"、"云端实验室+真实用户数据融合"和"深度网络诊断"三种方法论。
 
 ### Lighthouse 的评分算法
+
+Lighthouse 是 Google 开发的开源自动化工具，集成于 Chrome DevTools、Node.js CLI 和 CI/CD 流水线。其性能评分（0~100）基于加权计算的指标组合。
+
+**Lighthouse 10 的权重分配：**
+
+## 核心概念
+
+| 概念 | 说明 |
+|---|---|
+| Lighthouse | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| PageSpeed | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| WebPageTest | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| 性能测试 | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+| CI/CD | 需要明确它的定义、适用范围、与相邻概念的区别，以及在代码中的可观察表现。 |
+
+这些概念之间往往存在依赖关系：先理解术语边界，再观察运行机制，最后才能做出稳定的工程决策。
+
+## 工作原理
 
 Lighthouse 是 Google 开发的开源自动化工具，集成于 Chrome DevTools、Node.js CLI 和 CI/CD 流水线。其性能评分（0~100）基于加权计算的指标组合。
 
@@ -85,7 +153,69 @@ WebPageTest（WPT）由 Catchpoint 维护，是专业性能工程师的首选工
 - 测试次数：1~9 次（取中位数）
 ```
 
-## 用法
+| 指标 | 权重 | 类型 | 测量方式 |
+|------|------|------|----------|
+| LCP（最大内容绘制） | 25% | 实验室估计 | 合成监控 |
+| INP（交互到下一次绘制） | 25% | 实验室估计 | 合成监控（使用 TBT 近似） |
+| CLS（累积布局偏移） | 25% | 实验室估计 | 合成监控 |
+| TBT（总阻塞时间） | 15% | 实验室专用 | 合成监控 |
+| SI（速度指数） | 10% | 实验室专用 | 合成监控 |
+
+**评分曲线的对数正态分布：**
+
+Lighthouse 的评分并非线性映射。以 LCP 为例：
+- 0~2.5s：分数从 0 快速上升到约 90（对数曲线）
+- 2.5~4.0s：分数从 90 缓慢下降到约 50
+- > 4.0s：分数趋近于 0
+
+这种设计的哲学是：从"差"优化到"及格"相对容易（曲线陡峭段），但从"及格"到"优秀"需要指数级的努力（曲线平缓段）。
+
+**模拟环境的校准：**
+
+Lighthouse 默认使用"模拟的 Moto G Power"配置：
+- CPU：4 核，降速 4 倍（CPU throttling）
+- 网络：RTT 150ms，下行 1.6Mbps，上行 0.768Mbps（模拟慢 4G）
+- 视口：412×823（DPR 1.75）
+
+这种校准基于 CrUX 数据中第 75 百分位的真实设备分布。但需要注意的是，模拟降速（Simulated Throttling）和实际降速（Applied Throttling）存在差异：模拟降速通过预测模型估算降速后的性能，而不真正限制 CPU，因此结果可能与真实设备有偏差。
+
+### PageSpeed Insights（PSI）的双数据源融合
+
+PSI 是 Google 提供的在线服务，其独特之处在于同时展示：
+1. **Lab Data**：来自 Lighthouse 的合成测试结果
+2. **Field Data**：来自 Chrome 用户体验报告（CrUX）的真实用户数据（过去 28 天）
+
+**PSI 的数据融合逻辑：**
+
+当 URL 在 CrUX 中有足够数据（通常需要数百次访问）时，PSI 优先展示 Field Data。若数据不足，则仅展示 Lab Data。Field Data 包含 LCP、INP、CLS、FCP、TTFB 的分布直方图（good / needs improvement / poor 的占比）。
+
+PSI 还提供了一个关键洞察：**Origin 级别的汇总数据**。即使某个具体 URL 数据不足，PSI 也可能展示整个域名（Origin）的汇总性能数据。
+
+### WebPageTest 的深度诊断能力
+
+WebPageTest（WPT）由 Catchpoint 维护，是专业性能工程师的首选工具。与 Lighthouse 不同，WPT 使用**真实浏览器在真实设备上运行**（或通过代理精确模拟），提供毫秒级的网络瀑布图和渲染过程视频。
+
+**WPT 的核心能力：**
+
+- **多地点测试**：从全球 40+ 个测试节点发起测试，评估 CDN 效果
+- **真实设备**：提供 iPhone、Pixel 等真实移动设备测试（非模拟器）
+- **网络瀑布图**：展示每个请求的 DNS、TCP、TLS、TTFB、下载各阶段时间
+- **渲染过程视频**：录制页面加载的每一帧，可视化视觉进度
+- **对比测试（Filmstrip Comparison）**：并排对比两个版本的加载过程
+- **自定义脚本**：支持高级测试脚本（如登录、填写表单后测试）
+
+**WPT 的测试配置参数：**
+
+```
+- 连接类型：Cable (5/1 Mbps, 28ms RTT)、DSL (1.5/384 Kbps, 50ms RTT)、
+  3G Fast (1.6/768 Kbps, 150ms RTT)、3G Slow (780/330 Kbps, 200ms RTT)、
+  4G (9/1.5 Mbps, 170ms RTT)、Native (无限制)
+- 浏览器：Chrome、Firefox、Safari、Edge
+- 设备：Desktop、Moto G4、iPhone X、Pixel 2 等
+- 测试次数：1~9 次（取中位数）
+```
+
+## 代码示例
 
 ### Lighthouse CI 集成
 
@@ -253,7 +383,7 @@ Diagnostics:
 - Avoid chaining critical requests: 4 chains found
 ```
 
-## 实践
+## 工程实践
 
 ### 案例：Lighthouse 评分从 42 提升到 95 的完整路径
 
@@ -293,7 +423,25 @@ Diagnostics:
 | 网络层深度诊断 | WebPageTest 瀑布图 | 毫秒级请求阶段分解 |
 | SEO 与性能综合评估 | PageSpeed Insights | 同时展示 Core Web Vitals 和 SEO 评分 |
 
-## 陷阱
+在真实项目中落地性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+在真实项目中落地性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest时，可以按以下顺序推进：
+
+| 步骤 | 动作 | 验证方式 |
+|---|---|---|
+| 识别场景 | 明确它解决的是性能、可维护性、兼容性、安全性还是协作问题。 | 写出触发条件和不适用场景。 |
+| 建立基线 | 记录当前实现、指标、错误率或维护成本。 | 使用测试、日志、监控或构建报告作为证据。 |
+| 小步改造 | 先在低风险路径验证方案，再扩大到核心链路。 | 对比改造前后的行为和指标。 |
+| 固化规范 | 将经验沉淀为 lint、测试、文档或评审清单。 | 新增场景能复用同一套判断标准。 |
+
+## 常见误区
 
 | 陷阱 | 描述 | 正确做法 |
 |------|------|----------|
@@ -332,3 +480,31 @@ Lighthouse 使用合成监控（Lab Data），其 INP 值实际上由 TBT 近似
   correctIndex={1}
   explanation="PageSpeed Insights 的 Field Data 直接来自 Chrome 用户体验报告（Chrome User Experience Report，简称 CrUX），这是基于真实 Chrome 用户的选择性匿名数据集。Lab Data 才来自 Lighthouse 合成测试。"
 />
+
+## 对比总结
+
+| 维度 | 关注点 | 判断标准 |
+|---|---|---|
+| 概念理解 | 性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest的定义、边界和相邻概念。 | 能用自己的话解释，并指出至少一个反例。 |
+| 工程使用 | 代码、配置、流程或团队规范中的落地方式。 | 能在真实场景中给出可执行步骤。 |
+| 风险控制 | 性能、兼容、安全、可维护性和协作成本。 | 有测试、监控、回滚或审查机制支撑。 |
+| 长期维护 | 文档、自动化检查和知识传递。 | 后续成员能按同一标准继续演进。 |
+
+## 自测题
+
+<Quiz
+  question={"学习性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest时，最能体现工程化理解的是哪一项？"}
+  options={[
+    "只记住一个简短定义",
+    "能说明适用场景、限制条件、验证方式和常见风险",
+    "只复制文章中的代码片段",
+    "只关注工具或 API 名称"
+  ]}
+  correctIndex={1}
+  explanation={"工程化理解不止停留在概念定义，还要能说明适用边界、验证方式和风险控制。这样才能把性能评分工具：Lighthouse / PageSpeed Insights / WebPageTest从知识点转化为可落地的工程判断。"}
+/>
+
+## 参考资料
+
+- [web.dev Performance](https://web.dev/learn/performance/)
+- [Chrome Developers Performance](https://developer.chrome.com/docs/performance/)

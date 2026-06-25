@@ -66,6 +66,12 @@ npm install
 # 生成搜索索引
 npm run generate-index
 
+# 检查 231 篇文章是否符合 V2 内容结构
+npm run check-content
+
+# 可选：批量迁移文章到 V2 结构
+npm run migrate-content-v2
+
 # 可选：重构仍带模板痕迹的章节内容框架
 npm run reframe-content
 
@@ -80,8 +86,9 @@ npm run dev
 ## 构建与部署
 
 ```bash
-# 生成搜索索引并构建静态站点
+# 生成搜索索引、检查内容结构并构建静态站点
 npm run generate-index
+npm run check-content
 npm run build
 
 # 构建输出位于 dist/ 目录
@@ -121,7 +128,9 @@ fe-encyclopedia/
 │   └── ...
 ├── lib/                    # 工具库（MDX 编译、导航生成、搜索索引）
 ├── scripts/
-│   └── generate-index.ts   # 搜索索引生成脚本
+│   ├── generate-index.ts              # 搜索索引生成脚本
+│   ├── check-content-structure.ts     # V2 内容结构检查脚本
+│   └── migrate-content-v2.js          # V2 内容结构迁移脚本
 └── .github/workflows/
     └── deploy.yml          # GitHub Pages 自动部署
 ```
@@ -130,25 +139,61 @@ fe-encyclopedia/
 
 ## 如何贡献内容
 
-内容使用 MDX 格式，位于 `content/` 目录下。每篇文章需遵循以下 frontmatter 格式：
+内容使用 MDX 格式，位于 `content/` 目录下。每篇文章需遵循 V2 frontmatter 格式：
 
 ```yaml
 ---
-title: "1.1 数据在计算机中的表示"
-description: "二进制、十六进制、浮点数（IEEE 754）、大端与小端"
+title: "1.1 数据在计算机中的表示：二进制、十六进制、浮点数（IEEE 754）、大端与小端"
+description: "深入理解计算机底层数据表示方式，以及它们对网络通信、文件格式和前端二进制处理的影响。"
 volume: "卷一：计算机科学与网络基础"
 chapter: "第 1 章 计算机系统基础"
 section: "1.1"
-tags: ["二进制", "IEEE754", "字节序", "进制转换"]
+status: "已完成"
 difficulty: "基础"
+lastUpdated: "2026-06-26"
+tags: ["二进制", "IEEE754", "字节序", "进制转换"]
+keywords: ["Binary", "IEEE 754", "Endian", "ArrayBuffer"]
+summary: "本文解释二进制、浮点数和字节序的底层机制，并说明它们在前端二进制协议和数据处理中的工程影响。"
+learningGoals:
+  - "理解二进制、补码、IEEE 754 和字节序的核心概念。"
+  - "掌握前端处理 ArrayBuffer、TypedArray 和 DataView 时的验证方式。"
+  - "能够识别浮点数精度、大整数和字节序相关的常见误区。"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "1.2 CPU 架构与缓存层次"
+    slug: "volume-01/chapter-01/1.2-cpu-cache"
+crossRefs:
+  - title: "9.8 文件与二进制"
+    slug: "volume-03/chapter-09/9.8-file-binary"
+references:
+  - title: "MDN JavaScript Typed Arrays"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Typed_arrays"
 ---
 ```
 
-文章正文建议按“章节定位、知识地图、核心机制、工程决策、实战路径、诊断与验证、常见误区、后续补写清单”组织。若新增内容仍带模板痕迹，可运行 `npm run reframe-content` 先生成统一框架，再继续人工深写。
+文章正文统一使用以下二级标题：
+
+```mdx
+## 速览
+## 背景与问题
+## 核心概念
+## 工作原理
+## 代码示例
+## 工程实践
+## 常见误区
+## 对比总结
+## 自测题
+## 参考资料
+```
+
+新增或修改内容后建议依次运行：
+
+```bash
+npm run migrate-content-v2
+npm run generate-index
+npm run check-content
+npm run build
+```
 
 ---
 
