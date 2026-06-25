@@ -6,24 +6,130 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.2"
 tags: ["选择器", "Specificity", "伪类", "CSS"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.1 CSS 基础模型：盒模型、BFC、包含块、层叠上下文"
+    slug: "volume-02/chapter-05/5.1-box-model"
+  - title: "5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性"
+    slug: "volume-02/chapter-05/5.3-values-units"
+  - title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
+    slug: "volume-02/chapter-05/5.4-visual-formatting"
+crossRefs:
+  - title: "5.1 CSS 基础模型：盒模型、BFC、包含块、层叠上下文"
+    slug: "volume-02/chapter-05/5.1-box-model"
+  - title: "5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性"
+    slug: "volume-02/chapter-05/5.3-values-units"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+选择器决定样式匹配哪些元素，层叠决定冲突时谁胜出。真正影响维护性的不是“选择器越短越好”，而是匹配范围、特异性、层级耦合和覆盖成本是否可控。
+
+特异性通常按四类比较：
+
+| 类别 | 示例 | 权重直觉 |
+|---|---|---|
+| 内联样式 | `style=""` | 最高，除非遇到重要声明和层叠规则 |
+| ID | `#app` | 高 |
+| 类、属性、伪类 | `.button`、`[disabled]`、`:hover` | 中 |
+| 类型、伪元素 | `button`、`::before` | 低 |
+
+`:is()`、`:not()`、`:has()` 的特异性来自参数中最高的选择器；`:where()` 的特异性始终为 0，非常适合写低优先级基础样式。
+
+<Callout type="tip" title="选择器设计目标">
+基础样式低特异性，组件样式稳定局部，状态样式显式可读，覆盖样式通过层或 token 管理，而不是靠 `!important`。
+</Callout>
 
 ## 用法
 
-内容待补充...
+常见选择器：
+
+```css
+button.primary { }
+
+.form > .field { }
+
+.card:has(img) { }
+
+.nav a[aria-current="page"] { }
+
+.prose :where(h2, h3, p, ul) {
+  margin-block: 1rem;
+}
+```
+
+`:has()` 适合根据子元素或后续状态调整父级样式：
+
+```css
+.field:has(input:invalid) {
+  border-color: var(--color-danger);
+}
+
+.card:has(.card__media) {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+}
+```
+
+`@layer` 可以把选择器放入明确的层叠顺序：
+
+```css
+@layer reset, base, components, utilities;
+
+@layer base {
+  :where(button, input, textarea) {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .button {
+    border-radius: 6px;
+  }
+}
+```
 
 ## 实践
 
-内容待补充...
+团队 CSS 选择器建议：
+
+1. 基础样式使用 `:where()` 降低特异性。
+2. 组件样式避免过深后代选择器，优先使用明确类名。
+3. 状态用属性或状态类表达，例如 `[aria-expanded="true"]`。
+4. 不把组件样式绑定到页面 DOM 深层结构。
+5. 第三方库覆盖优先放入明确层或主题 token。
+
+```css
+.accordion__trigger[aria-expanded="true"] {
+  color: var(--color-primary);
+}
+
+.accordion__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+
+.accordion__trigger[aria-expanded="true"] + .accordion__panel {
+  grid-template-rows: 1fr;
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 深层选择器绑定 DOM | 结构一改样式失效 | 用组件类或 data 属性 |
+| 滥用 ID 选择器 | 覆盖成本过高 | 组件样式避免 ID |
+| 用 `!important` 解决冲突 | 后续只能继续升级 | 先调整层、特异性和来源顺序 |
+| 忽略 `:where()` 特异性为 0 | 覆盖行为和预期不同 | 基础样式可用，关键状态慎用 |
+| `:has()` 用在超大范围 | 复杂匹配可能影响维护和性能 | 缩小作用域并测试 |
+
+## 参考资料
+
+- [MDN: CSS selectors](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_selectors)
+- [MDN: Specificity](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_cascade/Specificity)
+- [MDN: Cascade layers](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Cascade_layers)
+- [W3C: Selectors Level 4](https://www.w3.org/TR/selectors-4/)

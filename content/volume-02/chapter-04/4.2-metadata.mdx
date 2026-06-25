@@ -6,24 +6,136 @@ chapter: "第 4 章 HTML 全景"
 section: "4.2"
 tags: ["Meta", "Viewport", "SEO", "Open Graph"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.1 HTML 发展史：HTML 2.0 → XHTML 1.0 → HTML5 → Living Standard（WHATWG）"
+    slug: "volume-02/chapter-04/4.1-html-history"
+  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
+    slug: "volume-02/chapter-04/4.3-semantic"
+  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
+    slug: "volume-02/chapter-04/4.4-forms"
+crossRefs:
+  - title: "4.1 HTML 发展史：HTML 2.0 → XHTML 1.0 → HTML5 → Living Standard（WHATWG）"
+    slug: "volume-02/chapter-04/4.1-html-history"
+  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
+    slug: "volume-02/chapter-04/4.3-semantic"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+文档元数据位于 `head` 中，用来告诉浏览器、搜索引擎、社交平台和辅助技术如何解释当前文档。它不直接渲染成主体内容，但会影响解析模式、字符编码、布局视口、搜索摘要、分享卡片和爬虫行为。
+
+| 元数据 | 作用 | 是否建议所有页面具备 |
+|---|---|---|
+| `<!doctype html>` | 触发标准模式 | 是 |
+| `html lang` | 声明主要语言 | 是 |
+| `meta charset` | 声明字符编码 | 是，且尽量靠前 |
+| `meta viewport` | 控制移动端布局视口 | 是 |
+| `title` | 浏览器标题、搜索结果标题 | 是 |
+| `meta description` | 搜索摘要候选 | 重要页面建议 |
+| canonical | 指定规范 URL | 存在重复 URL 时建议 |
+| Open Graph | 社交分享卡片 | 需要分享传播时建议 |
+
+<Callout type="info" title="元数据是页面契约">
+同一页面的标题、描述、canonical、Open Graph URL 应保持一致。否则搜索引擎、分享平台和用户看到的页面身份会不一致。
+</Callout>
 
 ## 用法
 
-内容待补充...
+一个较完整的产品页 `head` 示例：
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>高级搜索 - 示例产品</title>
+    <meta name="description" content="用多条件筛选、保存视图和批量操作提升搜索效率。" />
+    <link rel="canonical" href="https://example.com/search" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="高级搜索 - 示例产品" />
+    <meta property="og:description" content="用多条件筛选、保存视图和批量操作提升搜索效率。" />
+    <meta property="og:url" content="https://example.com/search" />
+    <meta property="og:image" content="https://example.com/og/search.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+</html>
+```
+
+`viewport` 的常用值是：
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+```
+
+不要轻易设置 `user-scalable=no` 或过小的 `maximum-scale`。这会影响低视力用户缩放页面，也可能不符合可访问性要求。
+
+在框架项目里，元数据通常由路由层统一生成。
+
+```ts
+type PageMeta = {
+  title: string
+  description: string
+  canonical: string
+}
+
+export function buildPageMeta(meta: PageMeta) {
+  // 中文注释：集中生成页面元数据，避免 title、description 和分享卡片内容不一致。
+  return {
+    title: meta.title,
+    description: meta.description,
+    alternates: { canonical: meta.canonical },
+    openGraph: {
+      title: meta.title,
+      description: meta.description,
+      url: meta.canonical,
+    },
+  }
+}
+```
 
 ## 实践
 
-内容待补充...
+元数据治理建议纳入发布检查：
+
+1. 每个可索引页面必须有唯一 `title` 和稳定 URL。
+2. 关键页面必须有 `description`，不要所有页面复用同一句。
+3. 多语言页面使用 `lang` 和 `hreflang` 对应真实语言版本。
+4. 分页、筛选、排序等页面明确 canonical 策略。
+5. 分享卡片图片使用绝对 HTTPS URL，并控制尺寸和文件体积。
+6. SSR/SSG 页面确保首屏 HTML 中已经包含关键元数据。
+
+| 场景 | 推荐策略 |
+|---|---|
+| 首页 | 品牌名 + 核心定位 + OG 图片 |
+| 文章页 | 文章标题、摘要、发布时间、作者 |
+| 商品页 | 商品名、价格信息、主图 |
+| 搜索筛选页 | 谨慎索引，必要时 canonical 到主搜索页 |
+| 登录后台 | 通常 noindex，避免被搜索收录 |
+
+```html
+<!-- 后台和登录页通常不希望被搜索引擎收录。 -->
+<meta name="robots" content="noindex, nofollow" />
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| `charset` 放得过晚 | 浏览器可能在解析早期内容时猜错编码 | 放在 `head` 开头 |
+| 禁止用户缩放 | 影响可访问性和移动端可用性 | 保留用户缩放能力 |
+| title 全站重复 | 搜索结果和浏览器标签难以区分 | 按路由生成唯一标题 |
+| OG 图片使用相对路径 | 社交平台抓取失败 | 使用绝对 HTTPS URL |
+| canonical 与实际内容不一致 | 搜索引擎归并错误 | 按页面内容和 URL 策略生成 |
+
+## 参考资料
+
+- [WHATWG HTML: Document metadata](https://html.spec.whatwg.org/multipage/semantics.html#document-metadata)
+- [MDN: meta element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/meta)
+- [The Open Graph protocol](https://ogp.me/)
+- [Google Search Central: Special tags](https://developers.google.com/search/docs/crawling-indexing/special-tags)

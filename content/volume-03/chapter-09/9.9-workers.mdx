@@ -6,24 +6,113 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.9"
 tags: ["Web Worker", "Service Worker", "Worklet", "PWA"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API"
+    slug: "volume-03/chapter-09/9.8-file-binary"
+  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
+    slug: "volume-03/chapter-09/9.10-media-api"
+  - title: "9.7 网络请求 API：XMLHttpRequest、fetch、WebSocket、SSE、Beacon API"
+    slug: "volume-03/chapter-09/9.7-network-api"
+crossRefs:
+  - title: "9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API"
+    slug: "volume-03/chapter-09/9.8-file-binary"
+  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
+    slug: "volume-03/chapter-09/9.10-media-api"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+Worker 把部分 JavaScript 放到主线程之外执行，避免阻塞 UI。不同 Worker 的定位不同：
+
+| 类型 | 作用 |
+|---|---|
+| Dedicated Worker | 单页面独占后台线程 |
+| SharedWorker | 同源多个页面共享 |
+| Service Worker | 网络代理、缓存、离线、Push |
+| Worklet | 渲染/音频等专用小型执行环境 |
+
+Worker 没有 DOM 访问能力，通过 `postMessage` 和结构化克隆通信。ArrayBuffer 可作为 Transferable 转移所有权，减少复制成本。
 
 ## 用法
 
-内容待补充...
+主线程创建 Worker：
+
+```ts
+const worker = new Worker(new URL("./parser.worker.ts", import.meta.url), {
+  type: "module",
+})
+
+worker.postMessage({ type: "parse", payload: "large text" })
+
+worker.addEventListener("message", (event) => {
+  // 中文注释：Worker 返回的数据仍来自边界，需要按协议校验 type。
+  console.log(event.data)
+})
+```
+
+Worker 内部：
+
+```ts
+self.addEventListener("message", (event) => {
+  const result = String(event.data.payload).toUpperCase()
+
+  // 中文注释：Worker 中不能访问 document，但可以执行计算和 fetch。
+  self.postMessage({ type: "done", result })
+})
+```
+
+Service Worker 注册：
+
+```ts
+if ("serviceWorker" in navigator) {
+  await navigator.serviceWorker.register("/sw.js")
+}
+```
 
 ## 实践
 
-内容待补充...
+适合放入 Worker 的任务：
+
+1. 大文件解析、压缩、加密、图片处理。
+2. 复杂搜索、语法分析、数据转换。
+3. OffscreenCanvas 绘图和部分图形计算。
+
+不适合 Worker 的任务：
+
+1. 频繁读写 DOM。
+2. 需要大量小消息往返的轻量操作。
+3. 依赖主线程上下文的 UI 状态。
+
+Service Worker 要严格版本化缓存：
+
+```ts
+const CACHE_NAME = "app-v3"
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+    ),
+  )
+})
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| Worker 消息过于频繁 | 批量发送或转移 ArrayBuffer |
+| 忘记 terminate | 页面不再需要时调用 `worker.terminate()` |
+| Service Worker 缓存陈旧 | 缓存命名版本化，明确更新策略 |
+| 在 Worker 访问 DOM | 通过消息让主线程操作 DOM |
+| 忽略跨源隔离 | SharedArrayBuffer 等能力需要 COOP/COEP |
+
+## 参考资料
+
+- [MDN: Web Workers API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API)
+- [MDN: Using Web Workers](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers)
+- [MDN: Service Worker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API)
+- [MDN: Worklet](https://developer.mozilla.org/en-US/docs/Web/API/Worklet)

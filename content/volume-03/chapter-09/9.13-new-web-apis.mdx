@@ -6,24 +6,107 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.13"
 tags: ["Popover", "View Transitions", "隐私沙盒", "新API"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
+    slug: "volume-03/chapter-09/9.12-security-api"
+  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
+    slug: "volume-03/chapter-09/9.11-performance-api"
+crossRefs:
+  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
+    slug: "volume-03/chapter-09/9.12-security-api"
+  - title: "10.1 JavaScript 引擎：V8 架构、隐藏类、内联缓存、快速属性与字典模式"
+    slug: "volume-03/chapter-10/10.1-js-engine"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+新兴 Web API 的共同趋势是把过去由 JS 库实现的能力交给浏览器：弹层、视图过渡、锚点定位、剪贴板、分享、锁、压缩、文件系统、硬件访问和隐私保护。它们的成熟度差异很大，必须按 Baseline、MDN 兼容性表和目标浏览器验证。
+
+| API | 用途 | 接入策略 |
+|---|---|---|
+| Popover API | 原生弹层和 light dismiss | 可渐进替代简单 dropdown |
+| View Transitions | DOM 状态或页面切换动画 | 动画增强，不影响核心导航 |
+| Anchor Positioning | 弹层相对锚点定位 | 需要回退 |
+| Clipboard/Web Share | 系统能力集成 | 需要安全上下文和用户手势 |
+| Privacy Sandbox | 广告、归因和隐私相关能力 | 强依赖浏览器政策和地区环境 |
 
 ## 用法
 
-内容待补充...
+Popover：
+
+```html
+<button popovertarget="menu">打开菜单</button>
+
+<div id="menu" popover>
+  <!-- 中文注释：popover 提供基础弹层行为，但复杂焦点管理仍需验证。 -->
+  菜单内容
+</div>
+```
+
+View Transitions：
+
+```ts
+function updateView(render: () => void) {
+  if ("startViewTransition" in document) {
+    document.startViewTransition(render)
+    return
+  }
+
+  // 中文注释：不支持时直接更新视图，功能仍然可用。
+  render()
+}
+```
+
+Clipboard：
+
+```ts
+async function copyText(text: string) {
+  if (!navigator.clipboard?.writeText) {
+    throw new Error("当前浏览器不支持 Clipboard API")
+  }
+
+  // 中文注释：剪贴板写入通常需要安全上下文，读取更依赖权限和用户手势。
+  await navigator.clipboard.writeText(text)
+}
+```
 
 ## 实践
 
-内容待补充...
+新 API 接入清单：
+
+1. 先写基础可用方案，再用 feature detection 增强。
+2. 查 MDN 兼容性和 Baseline，确认目标浏览器。
+3. 明确权限、用户手势、安全上下文和隐私限制。
+4. 把实验 API 包装在适配层，避免业务代码直接依赖。
+
+```ts
+function supportsPopover() {
+  return HTMLElement.prototype.hasOwnProperty("popover")
+}
+
+function supportsViewTransition() {
+  return "startViewTransition" in document
+}
+```
+
+隐私沙盒相关 API 变化受浏览器政策、监管和生态影响较大，工程上应通过服务端配置、实验开关和监控灰度，不应写死在核心业务路径中。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 把实验 API 当稳定依赖 | feature detection 加回退 |
+| 忽略权限和用户手势 | 只在用户明确操作后调用 |
+| 动画 API 影响可访问性 | 尊重 `prefers-reduced-motion` |
+| Clipboard 读取随意调用 | 读取剪贴板属于敏感能力，必须明确授权 |
+| 隐私沙盒能力写死 | 通过配置和灰度控制 |
+
+## 参考资料
+
+- [MDN: Web APIs](https://developer.mozilla.org/en-US/docs/Web/API)
+- [MDN: View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API)
+- [Chrome Developers: View Transitions](https://developer.chrome.com/docs/web-platform/view-transitions)
+- [MDN: Clipboard API](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API)

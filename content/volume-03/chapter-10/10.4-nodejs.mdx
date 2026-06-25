@@ -5,25 +5,108 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 10 章 运行时深入"
 section: "10.4"
 tags: ["Node.js", "libuv", "CommonJS", "ESM"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "10.3 内存模型与垃圾回收：标记-清除-整理、分代回收、WeakMap/WeakRef"
+    slug: "volume-03/chapter-10/10.3-memory-model"
+  - title: "10.5 Deno 与 Bun：安全模型、原生 TypeScript、Zig 实现、JavaScriptCore"
+    slug: "volume-03/chapter-10/10.5-deno-bun"
+  - title: "10.2 事件循环详解：宏任务队列、微任务队列、process.nextTick、requestAnimationFrame"
+    slug: "volume-03/chapter-10/10.2-event-loop"
+crossRefs:
+  - title: "10.3 内存模型与垃圾回收：标记-清除-整理、分代回收、WeakMap/WeakRef"
+    slug: "volume-03/chapter-10/10.3-memory-model"
+  - title: "10.5 Deno 与 Bun：安全模型、原生 TypeScript、Zig 实现、JavaScriptCore"
+    slug: "volume-03/chapter-10/10.5-deno-bun"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+Node.js 可以理解为 V8、libuv、C/C++ 绑定、标准库和模块加载系统的组合。V8 执行 JavaScript，libuv 提供跨平台事件循环、网络 I/O、文件 I/O 和线程池抽象，Node 标准库把这些能力封装成 `fs`、`net`、`http`、`crypto`、`stream` 等模块。
+
+Node 的事件循环阶段包括 timers、pending callbacks、idle/prepare、poll、check 和 close callbacks。网络 I/O 多由操作系统事件通知驱动；部分文件系统、DNS、压缩和加密任务会进入 libuv 线程池。线程池不是 JavaScript 多线程执行环境，它只是帮助某些阻塞型底层工作不阻塞主事件循环。
+
+模块系统是 Node 工程的另一条主线。CommonJS 使用 `require()` 同步加载，运行时导出 `module.exports`；ES Module 使用静态 `import/export`，支持顶层 `await`，并由 `package.json` 的 `type`、`exports`、`imports` 等字段影响解析。现代包通常需要同时考虑 Node、浏览器 bundler、TypeScript 和测试环境的解析行为。
+
+前端团队学习 Node.js，不只是为了写服务端，也为了理解构建工具、CLI、SSR、BFF、测试 runner 和包管理器的运行基础。
 
 ## 用法
 
-内容待补充...
+优先使用 `node:` 前缀导入内置模块，减少与 npm 包同名的歧义：
+
+```ts
+import { readFile } from "node:fs/promises"
+import { createServer } from "node:http"
+
+/**
+ * 读取静态 JSON 配置。
+ * @param filePath 配置文件路径。
+ * @returns 解析后的未知结构，由调用方继续校验。
+ */
+async function readJson(filePath: string): Promise<unknown> {
+  const text = await readFile(filePath, "utf8")
+  // 中文注释：文件 I/O 使用异步 API，避免阻塞事件循环。
+  return JSON.parse(text)
+}
+
+createServer(async (_request, response) => {
+  const config = await readJson("config.json")
+  response.setHeader("content-type", "application/json; charset=utf-8")
+  response.end(JSON.stringify(config))
+}).listen(3000)
+```
+
+对 CPU 密集型任务，不要指望 async/await 自动并行。下面代码虽然用了 Promise，但计算仍在主线程执行：
+
+```ts
+/**
+ * CPU 密集型同步计算示例。
+ * @param input 输入规模。
+ * @returns 计算结果。
+ */
+function heavyCompute(input: number): number {
+  let total = 0
+
+  for (let index = 0; index < input; index += 1) {
+    // 中文注释：大量同步循环会阻塞事件循环，影响所有请求。
+    total += Math.sqrt(index)
+  }
+
+  return total
+}
+```
+
+真正的 CPU 隔离应使用 Worker Threads、独立进程、任务队列或把计算下沉到专门服务。
 
 ## 实践
 
-内容待补充...
+Node 项目需要关注四类运行时风险：
+
+| 风险 | 典型表现 | 处理方式 |
+|---|---|---|
+| 事件循环阻塞 | 接口 P95/P99 抖动、健康检查超时 | 拆分 CPU 任务，使用 worker 或队列 |
+| 线程池耗尽 | 文件、DNS、crypto 操作排队 | 控制并发，必要时调整 `UV_THREADPOOL_SIZE` |
+| 模块解析不一致 | 本地可用、构建或测试失败 | 明确 `type`、`exports`、TS `moduleResolution` |
+| 资源未释放 | 进程无法退出、内存增长 | 关闭 server、连接池、watcher、定时器 |
+
+CLI 和构建工具还要处理退出码、信号和标准流。失败时应返回非零退出码，长任务应响应 `SIGINT`/`SIGTERM` 并清理临时资源。SSR/BFF 服务则需要把请求级上下文、日志 trace id、超时和取消信号贯穿异步链路。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| async 函数中写大量同步计算 | async 只改变返回值和调度，不会让 CPU 计算自动离开主线程。 |
+| 混用 CJS/ESM 时只看语法 | 还要看 `package.json`、文件扩展名、条件导出和 TypeScript 配置。 |
+| 认为线程池越大越好 | 线程池过大会增加上下文切换和资源竞争，应基于压测调整。 |
+| 不处理进程信号 | 容器、CI 和本地开发都依赖正确退出与清理。 |
+| 把浏览器 API 和 Node API 混为一谈 | 新版 Node 支持更多 Web API，但文件、进程、模块和权限模型仍不同。 |
+
+## 参考
+
+- [Node.js: The Node.js Event Loop](https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick)
+- [Node.js Docs: Modules](https://nodejs.org/api/modules.html)
+- [Node.js Docs: ECMAScript modules](https://nodejs.org/api/esm.html)
+- [libuv Design overview](https://docs.libuv.org/en/v1.x/design.html)

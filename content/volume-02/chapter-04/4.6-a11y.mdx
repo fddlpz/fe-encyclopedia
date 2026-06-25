@@ -6,24 +6,124 @@ chapter: "第 4 章 HTML 全景"
 section: "4.6"
 tags: ["A11y", "ARIA", "WCAG", "无障碍"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
+    slug: "volume-02/chapter-04/4.5-multimedia"
+  - title: "4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots"
+    slug: "volume-02/chapter-04/4.7-web-components"
+  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
+    slug: "volume-02/chapter-04/4.4-forms"
+crossRefs:
+  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
+    slug: "volume-02/chapter-04/4.5-multimedia"
+  - title: "4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots"
+    slug: "volume-02/chapter-04/4.7-web-components"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+可访问性（Accessibility, A11y）是让不同能力、设备和环境下的用户都能理解、操作和完成任务。它不是额外功能，而是 HTML、CSS、交互和内容质量的基本要求。
+
+WCAG 常用四个原则概括可访问性目标：
+
+| 原则 | 含义 | 前端关注点 |
+|---|---|---|
+| Perceivable 可感知 | 信息能被用户感知 | 文本替代、字幕、对比度 |
+| Operable 可操作 | 界面能被用户操作 | 键盘、焦点、时间限制 |
+| Understandable 可理解 | 内容和交互可理解 | 标签、错误提示、一致导航 |
+| Robust 健壮 | 能被多种用户代理和辅助技术解析 | 语义 HTML、ARIA 正确性 |
+
+ARIA 用来补充语义，不用来替代原生元素。能用 `button`、`input`、`select`、`dialog` 等原生元素时，优先使用原生元素，因为它们已经内置角色、状态、键盘行为和平台可访问性映射。
+
+<Callout type="warning" title="ARIA 的第一原则">
+如果原生 HTML 能表达语义，就不要用 ARIA 重写。错误 ARIA 往往比没有 ARIA 更糟。
+</Callout>
 
 ## 用法
 
-内容待补充...
+可访问名称是控件被辅助技术识别的名称。常见来源包括 `label`、元素文本、`aria-label`、`aria-labelledby`。
+
+```html
+<label for="search">搜索文档</label>
+<input id="search" name="q" type="search" autocomplete="off" />
+
+<button type="button" aria-label="关闭弹窗">
+  <span aria-hidden="true">×</span>
+</button>
+```
+
+焦点管理是键盘可用性的核心：
+
+```ts
+function openDialog(dialog: HTMLDialogElement) {
+  dialog.showModal()
+
+  const closeButton = dialog.querySelector<HTMLButtonElement>("[data-close]")
+  // 中文注释：打开弹窗后把焦点移到可操作元素，避免键盘用户迷失位置。
+  closeButton?.focus()
+}
+```
+
+色彩对比不能只靠“看起来明显”。WCAG 2.2 中普通文本通常需要至少 4.5:1 的对比度，大号文本通常至少 3:1。不要仅用颜色表达错误或状态，应配合文本、图标或结构。
+
+```html
+<p id="email-error" class="error" role="alert">
+  邮箱格式不正确，请检查后重新输入。
+</p>
+<input
+  id="email"
+  name="email"
+  type="email"
+  aria-invalid="true"
+  aria-describedby="email-error"
+/>
+```
 
 ## 实践
 
-内容待补充...
+可访问性检查清单：
+
+1. 只用键盘能完成主要流程，包括打开菜单、关闭弹窗、提交表单。
+2. 页面有清晰标题层级和跳转到主内容的入口。
+3. 所有表单控件有标签，错误提示可被读出。
+4. 图片、图标和媒体有合适替代文本或字幕。
+5. 焦点样式清晰可见，不被 CSS 移除。
+6. 自定义组件按 ARIA APG 对应模式实现键盘交互。
+7. 自动化工具和人工读屏测试结合使用。
+
+```tsx
+type IconButtonProps = {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}
+
+export function IconButton({ label, onClick, children }: IconButtonProps) {
+  return (
+    <button type="button" aria-label={label} onClick={onClick}>
+      {/* 中文注释：图标本身不参与朗读，按钮通过 aria-label 提供可访问名称。 */}
+      <span aria-hidden="true">{children}</span>
+    </button>
+  )
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 删除 `outline` | 键盘用户看不到焦点位置 | 自定义清晰焦点样式 |
+| 用 `div` 模拟复杂控件 | 键盘和辅助技术行为缺失 | 优先原生控件，复杂组件参考 APG |
+| 只跑自动化扫描 | 无法覆盖真实读屏和键盘体验 | 自动化 + 人工流程测试 |
+| 用颜色唯一表达状态 | 色弱用户和辅助技术无法理解 | 同时提供文本或图标说明 |
+| 弹窗不管理焦点 | 焦点留在背景页面 | 打开聚焦、关闭归还焦点 |
+
+## 参考资料
+
+- [W3C: WCAG 2.2](https://www.w3.org/TR/WCAG22/)
+- [W3C WAI: ARIA Authoring Practices Guide](https://www.w3.org/WAI/ARIA/apg/)
+- [WAI-ARIA 1.3 Editor's Draft](https://w3c.github.io/aria/)
+- [MDN: Accessibility](https://developer.mozilla.org/en-US/docs/Web/Accessibility)

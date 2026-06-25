@@ -5,25 +5,127 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 10-A 章 浏览器路由与历史管理"
 section: "10a.1"
 tags: ["History API", "路由", "bfcache", "SPA"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
 related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+crossRefs:
+  - title: "10.5 Deno 与 Bun：安全模型、原生 TypeScript、Zig 实现、JavaScriptCore"
+    slug: "volume-03/chapter-10/10.5-deno-bun"
+  - title: "11.1 React 设计哲学：声明式 UI、组件化、单向数据流、虚拟 DOM"
+    slug: "volume-04/chapter-11/11.1-react-philosophy"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+浏览器路由的核心是 URL、History API、页面状态和服务端回退之间的协作。传统多页应用由服务器根据 URL 返回不同 HTML；单页应用则在同一个文档内拦截导航，更新地址栏和视图。无论使用 React Router、Vue Router、Next.js Router 还是自研路由，底层都离不开浏览器的历史栈语义。
+
+`history.pushState(state, "", url)` 会向当前会话历史添加一条记录，`history.replaceState(state, "", url)` 会替换当前记录。二者都不会主动触发 `popstate`；只有用户后退/前进或脚本调用 `history.back()`、`history.forward()`、`history.go()` 在同一文档历史记录间移动时，才会触发 `popstate`。
+
+路由方案常见三类：
+
+- Hash 路由：URL 中使用 `#` 后的片段，不需要服务器回退配置，适合静态托管和低成本内嵌页面。
+- History 路由：使用正常路径，URL 更干净，但服务器必须把前端路由路径回退到入口 HTML。
+- Framework 路由：由框架同时管理文件路由、数据加载、预取、滚动恢复、错误边界和服务端渲染。
+
+bfcache 会让页面在后退/前进时从内存快照恢复，而不是完整重新加载。路由代码需要正确处理 `pageshow`、`pagehide`、滚动位置、未完成请求和一次性初始化逻辑，否则用户用后退键时可能看到过期状态或重复绑定事件。
 
 ## 用法
 
-内容待补充...
+最小 History 路由示例：
+
+```ts
+type Route = {
+  path: string
+  render: () => string
+}
+
+const routes: Route[] = [
+  { path: "/", render: () => "首页" },
+  { path: "/settings", render: () => "设置" },
+]
+
+/**
+ * 根据当前地址渲染视图。
+ * @returns 无返回值，直接更新页面容器。
+ */
+function renderCurrentRoute(): void {
+  const route = routes.find((item) => item.path === location.pathname)
+  const app = document.querySelector("#app")
+
+  if (!app) return
+
+  // 中文注释：真实项目应使用框架渲染，这里只展示路由语义。
+  app.textContent = route?.render() ?? "404"
+}
+
+/**
+ * 导航到新路径。
+ * @param path 目标路径。
+ * @returns 无返回值，更新历史记录并渲染。
+ */
+function navigate(path: string): void {
+  history.pushState({ path }, "", path)
+  renderCurrentRoute()
+}
+
+document.addEventListener("click", (event) => {
+  const anchor = (event.target as Element).closest("a[data-link]")
+  if (!(anchor instanceof HTMLAnchorElement)) return
+
+  event.preventDefault()
+  navigate(anchor.pathname)
+})
+
+window.addEventListener("popstate", () => {
+  // 中文注释：pushState 不触发 popstate，后退/前进才触发。
+  renderCurrentRoute()
+})
+
+renderCurrentRoute()
+```
+
+服务端必须配置回退。例如 Nginx 可将前端路由回退到入口文件：
+
+```nginx
+location / {
+  # 中文注释：静态资源正常命中，前端路由回退到入口 HTML。
+  try_files $uri $uri/ /index.html;
+}
+```
+
+状态设计要区分 URL 状态和内存状态。可分享、可刷新、可回放的状态应进入 URL，例如分页、筛选、搜索关键字；临时 UI 状态可以放在组件内存，例如弹窗展开、局部 hover。`history.state` 适合保存轻量、可序列化、与当前历史记录绑定的数据，不适合放大对象、函数、DOM 引用或敏感信息。
 
 ## 实践
 
-内容待补充...
+路由设计清单：
+
+| 维度 | 需要确认的问题 |
+|---|---|
+| URL 规范 | 是否支持刷新、复制分享、SEO、大小写和尾斜杠策略 |
+| 服务端回退 | CDN、Nginx、对象存储、SSR 服务是否都覆盖前端路由 |
+| 数据加载 | 路由切换时是否取消旧请求、处理竞态、展示 pending 和错误状态 |
+| 滚动恢复 | 列表页返回详情页时是否恢复位置，锚点是否正确 |
+| 访问控制 | 未登录、无权限、过期 token 是否有明确跳转和回跳策略 |
+| bfcache | `pageshow` 恢复时是否刷新必要状态，是否避免阻断 bfcache 的监听 |
+
+框架路由还需要关注数据一致性。路由 A 发起请求后迅速切到路由 B，如果 A 的请求后返回并写入全局状态，就会产生“旧页面覆盖新页面”的竞态。解决方式包括 AbortController、请求序号、路由级 loader、缓存库的 key 隔离和组件卸载清理。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 认为 `pushState` 会触发 `popstate` | `pushState`/`replaceState` 不触发；导航后需要主动渲染。 |
+| History 路由缺少服务端回退 | 刷新深层路径会 404，必须配置 CDN/服务端 fallback。 |
+| 把所有状态都塞进 URL | URL 适合可分享和可恢复状态，不适合大对象、敏感值和瞬态 UI。 |
+| 忽略滚动恢复 | SPA 默认行为不等同浏览器多页体验，需要明确策略。 |
+| 路由切换不取消请求 | 旧请求可能覆盖新页面状态，应使用 AbortController 或缓存库隔离。 |
+| 不测试后退/前进 | bfcache、`popstate` 和滚动恢复问题通常只在真实导航中暴露。 |
+
+## 参考
+
+- [MDN: Working with the History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API/Working_with_the_History_API)
+- [MDN: popstate event](https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event)
+- [web.dev: Back/forward cache](https://web.dev/articles/bfcache)
+- [WHATWG HTML: Session history and navigation](https://html.spec.whatwg.org/multipage/nav-history-apis.html)

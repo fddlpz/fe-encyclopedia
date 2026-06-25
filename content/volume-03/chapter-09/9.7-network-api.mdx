@@ -6,24 +6,123 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.7"
 tags: ["fetch", "XMLHttpRequest", "WebSocket", "SSE"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
+    slug: "volume-03/chapter-09/9.6-storage"
+  - title: "9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API"
+    slug: "volume-03/chapter-09/9.8-file-binary"
+  - title: "9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch"
+    slug: "volume-03/chapter-09/9.5-script-loading"
+crossRefs:
+  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
+    slug: "volume-03/chapter-09/9.6-storage"
+  - title: "9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API"
+    slug: "volume-03/chapter-09/9.8-file-binary"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+浏览器网络 API 覆盖普通 HTTP、流式通信、双向通信和页面卸载时的数据发送：
+
+| API | 方向 | 适合场景 |
+|---|---|---|
+| XHR | 请求/响应 | 老项目、上传进度兼容 |
+| fetch | 请求/响应、Promise、Stream | 现代 HTTP 请求 |
+| WebSocket | 双向长连接 | 实时协作、游戏、行情 |
+| SSE | 服务端到客户端单向推送 | 通知、日志、状态流 |
+| Beacon API | 页面卸载时尽力发送 | 埋点、诊断数据 |
+
+fetch 只在网络层失败时 reject；HTTP 4xx/5xx 仍会 resolve，需要检查 `response.ok`。请求受 CORS、Mixed Content、Credentials、缓存和 Service Worker 影响。
 
 ## 用法
 
-内容待补充...
+带取消能力的 fetch：
+
+```ts
+async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
+  const response = await fetch(url, {
+    signal,
+    headers: { accept: "application/json" },
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  // 中文注释：这里假设服务端返回可信 JSON，真实项目仍需做运行时 schema 校验。
+  return response.json() as Promise<T>
+}
+```
+
+WebSocket 生命周期：
+
+```ts
+const socket = new WebSocket("wss://example.com/realtime")
+
+socket.addEventListener("message", (event) => {
+  // 中文注释：WebSocket 消息来自网络边界，解析后仍要校验结构。
+  console.log(event.data)
+})
+
+socket.addEventListener("close", () => {
+  console.log("连接关闭，按业务策略重连")
+})
+```
+
+SSE：
+
+```ts
+const source = new EventSource("/api/events")
+
+source.addEventListener("message", (event) => {
+  console.log(JSON.parse(event.data))
+})
+```
+
+Beacon：
+
+```ts
+window.addEventListener("pagehide", () => {
+  const payload = JSON.stringify({ path: location.pathname })
+
+  // 中文注释：sendBeacon 是尽力发送，不适合关键业务确认。
+  navigator.sendBeacon("/analytics", payload)
+})
+```
 
 ## 实践
 
-内容待补充...
+网络层封装要统一处理：超时、取消、重试、鉴权、错误码、幂等性和观测。查询类请求可以重试，支付、下单等变更请求必须依赖幂等键和服务端确认。
+
+```ts
+function createTimeoutSignal(ms: number) {
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), ms)
+
+  return {
+    signal: controller.signal,
+    clear: () => window.clearTimeout(timeoutId),
+  }
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 忘记检查 `response.ok` | 统一封装 HTTP 错误处理 |
+| 重试非幂等请求 | 使用幂等键和服务端状态确认 |
+| WebSocket 无心跳 | 增加心跳、重连退避和页面可见性处理 |
+| SSE 承担双向通信 | 双向实时通信使用 WebSocket 或 WebRTC DataChannel |
+| Beacon 当可靠队列 | Beacon 只适合低价值尽力发送 |
+
+## 参考资料
+
+- [WHATWG Fetch Standard](https://fetch.spec.whatwg.org/)
+- [MDN: Using the Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
+- [MDN: WebSocket](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket)
+- [MDN: Server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)
+- [MDN: Navigator.sendBeacon](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon)

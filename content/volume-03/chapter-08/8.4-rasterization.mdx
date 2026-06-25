@@ -5,25 +5,106 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 8 章 浏览器架构与渲染引擎"
 section: "8.4"
 tags: ["光栅化", "GPU", "Skia", "VSync"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "8.3 渲染管线深入：解析 HTML、样式计算、布局、绘制、合成"
+    slug: "volume-03/chapter-08/8.3-rendering-pipeline"
+  - title: "8.5 内存管理：V8 堆分区、标记-清除-整理、增量标记、并发标记"
+    slug: "volume-03/chapter-08/8.5-memory-management"
+  - title: "8.2 导航流程：URL 输入到页面显示的全过程"
+    slug: "volume-03/chapter-08/8.2-navigation"
+crossRefs:
+  - title: "8.3 渲染管线深入：解析 HTML、样式计算、布局、绘制、合成"
+    slug: "volume-03/chapter-08/8.3-rendering-pipeline"
+  - title: "8.5 内存管理：V8 堆分区、标记-清除-整理、增量标记、并发标记"
+    slug: "volume-03/chapter-08/8.5-memory-management"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+光栅化是把绘制指令转换为像素位图。浏览器通常会把页面拆成图层和 tiles，分别光栅化后再由合成器合成。Chrome 底层大量使用 Skia 图形库；具体是否走 GPU 光栅化取决于平台、驱动、内容类型、浏览器策略和回退条件。
+
+| 概念 | 说明 |
+|---|---|
+| Paint | 记录绘制指令 |
+| Rasterize | 把绘制指令转换为位图 |
+| Tile | 把大图层切成小块，便于按需绘制和缓存 |
+| Composite | 把多个图层按 transform、opacity 等组合 |
+| VSync | 显示器刷新同步信号，决定帧提交节奏 |
+
+60Hz 屏幕每帧预算约 16.7ms，120Hz 则约 8.3ms。预算不仅给 JS，也包含样式、布局、绘制、光栅化和合成。
 
 ## 用法
 
-内容待补充...
+让滚动和动画更容易走合成路径：
+
+```css
+.sheet {
+  transform: translateY(100%);
+  transition: transform 220ms ease;
+}
+
+.sheet[data-open="true"] {
+  /* 中文注释：移动已有合成层比反复重排布局更稳定。 */
+  transform: translateY(0);
+}
+```
+
+限制昂贵绘制区域：
+
+```css
+.expensive-panel {
+  contain: layout paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 600px;
+}
+```
+
+用 requestAnimationFrame 对齐帧：
+
+```ts
+let pending = false
+
+function scheduleUpdate() {
+  if (pending) {
+    return
+  }
+
+  pending = true
+  requestAnimationFrame(() => {
+    pending = false
+    // 中文注释：在下一帧统一提交视觉更新，减少无意义重复绘制。
+    document.body.dataset.frame = String(Date.now())
+  })
+}
+```
 
 ## 实践
 
-内容待补充...
+排查掉帧时，优先确认是哪一段超预算：
+
+1. Main thread 忙：JS、样式或布局长任务。
+2. Paint 忙：大面积阴影、滤镜、渐变、复杂 SVG。
+3. Raster 忙：图片过大、图层过多、tile 反复失效。
+4. Composite 忙：层数量过多、纹理内存压力、GPU 回退。
+
+DevTools 的 Rendering、Layers、Performance 面板可以一起使用。不要单看 FPS；要看具体事件和耗时。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 以为 GPU 一定更快 | GPU 有上传、纹理和驱动成本，复杂内容可能回退 |
+| 过多合成层 | 控制 `will-change` 和 3D transform 的使用 |
+| 大图未压缩 | 使用响应式图片、合适尺寸和现代格式 |
+| 复杂滤镜全屏动画 | 缩小影响区域或改为预渲染资源 |
+| 只看平均 FPS | 同时看最长帧、掉帧位置和用户操作路径 |
+
+## 参考资料
+
+- [Chromium: GPU Accelerated Compositing in Chrome](https://www.chromium.org/developers/design-documents/gpu-accelerated-compositing-in-chrome/)
+- [web.dev: Rendering performance](https://web.dev/articles/rendering-performance)
+- [Chrome Developers: Inside look at modern web browser, part 3](https://developer.chrome.com/blog/inside-browser-part3)

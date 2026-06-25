@@ -5,25 +5,124 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.4"
 tags: ["工具类型", "keyof", "typeof", "类型体操"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
+    slug: "volume-02/chapter-07/7.3-advanced-types"
+  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
+    slug: "volume-02/chapter-07/7.5-declarations"
+  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
+    slug: "volume-02/chapter-07/7.2-basic-types"
+crossRefs:
+  - title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
+    slug: "volume-02/chapter-07/7.3-advanced-types"
+  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
+    slug: "volume-02/chapter-07/7.5-declarations"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+类型工具用于从已有类型派生新类型，避免重复维护多个相似结构。`keyof` 提取对象 key 联合，类型位置的 `typeof` 从运行时值提取静态类型，内置工具类型则封装常见变换。
+
+| 工具 | 用途 |
+|---|---|
+| `keyof T` | 获取对象类型的属性名联合 |
+| `typeof value` | 在类型位置引用变量的静态类型 |
+| `Partial<T>` | 所有属性变可选 |
+| `Required<T>` | 所有属性变必选 |
+| `Pick<T, K>` | 选取部分属性 |
+| `Omit<T, K>` | 排除部分属性 |
+| `Record<K, V>` | 构造 key 到 value 的映射 |
+| `ReturnType<F>` | 提取函数返回值 |
+| `Parameters<F>` | 提取函数参数元组 |
+| `Awaited<T>` | 递归展开 Promise-like 类型 |
+
+工具类型应服务于语义，而不是为了少写几个字段牺牲可读性。
 
 ## 用法
 
-内容待补充...
+从配置对象推导类型：
+
+```ts
+const routes = {
+  home: "/",
+  article: "/article/:id",
+  settings: "/settings",
+} as const
+
+type RouteName = keyof typeof routes
+
+function navigate(routeName: RouteName) {
+  // 中文注释：routeName 只能是 routes 中已有的 key。
+  return routes[routeName]
+}
+```
+
+用 `Pick` 和 `Omit` 表达 API DTO：
+
+```ts
+interface User {
+  id: string
+  email: string
+  passwordHash: string
+  createdAt: string
+}
+
+type PublicUser = Omit<User, "passwordHash">
+type UserPreview = Pick<User, "id" | "email">
+```
+
+用 `satisfies` 保留字面量并校验结构：
+
+```ts
+const statusText = {
+  draft: "草稿",
+  published: "已发布",
+  archived: "已归档",
+} satisfies Record<string, string>
+
+type ArticleStatus = keyof typeof statusText
+```
+
+提取函数类型：
+
+```ts
+async function fetchArticles() {
+  return [{ id: "1", title: "TypeScript" }]
+}
+
+type Articles = Awaited<ReturnType<typeof fetchArticles>>
+```
 
 ## 实践
 
-内容待补充...
+工具类型常见于三类场景：
+
+1. API 分层：数据库模型、接口 DTO、前端展示模型互相派生，但不要直接共用同一个类型。
+2. 配置中心：用 `as const` 加 `keyof typeof` 从配置对象推导合法 key。
+3. 组件设计：用 `Pick`、`Omit`、`ComponentProps` 等工具复用基础组件 props。
+
+```ts
+type UpdatePayload<T extends { id: string }> = Partial<Omit<T, "id">> & Pick<T, "id">
+
+type UserUpdatePayload = UpdatePayload<User>
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| `Partial<T>` 允许空对象 | 对更新接口增加至少一个字段的约束或运行时校验 |
+| `Record<string, T>` key 过宽 | 优先使用具体 key 联合 |
+| 过度嵌套工具类型 | 拆成命名类型，改善错误信息 |
+| `typeof` 和 JS `typeof` 混淆 | 类型位置的 `typeof` 是取静态类型，表达式位置是运行时操作符 |
+| 工具类型掩盖业务语义 | 关键 DTO 用业务命名，不只暴露 `Pick<Omit<...>>` |
+
+## 参考资料
+
+- [TypeScript Handbook: Keyof Type Operator](https://www.typescriptlang.org/docs/handbook/2/keyof-types.html)
+- [TypeScript Handbook: Typeof Type Operator](https://www.typescriptlang.org/docs/handbook/2/typeof-types.html)
+- [TypeScript Handbook: Utility Types](https://www.typescriptlang.org/docs/handbook/utility-types.html)

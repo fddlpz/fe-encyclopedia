@@ -6,24 +6,106 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.2"
 tags: ["DOM API", "createElement", "dataset", "操作"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.1 DOM 标准与树结构：节点类型、节点关系与遍历、Live Collection 陷阱"
+    slug: "volume-03/chapter-09/9.1-dom-standard"
+  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
+    slug: "volume-03/chapter-09/9.3-events"
+  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
+    slug: "volume-03/chapter-09/9.4-viewport"
+crossRefs:
+  - title: "9.1 DOM 标准与树结构：节点类型、节点关系与遍历、Live Collection 陷阱"
+    slug: "volume-03/chapter-09/9.1-dom-standard"
+  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
+    slug: "volume-03/chapter-09/9.3-events"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+DOM 操作分为创建、插入、替换、删除、属性更新和文本更新。现代 API 例如 `append()`、`prepend()`、`before()`、`after()`、`replaceWith()`、`remove()` 比传统 `insertBefore()` 更易读，但底层仍会修改节点树并可能触发后续样式、布局和绘制。
+
+`textContent` 写入纯文本，`innerHTML` 解析 HTML。只要内容来自用户或外部系统，就不应直接拼接进 `innerHTML`，否则可能产生 XSS。
 
 ## 用法
 
-内容待补充...
+创建安全 DOM：
+
+```ts
+function createArticleLink(title: string, href: string) {
+  const link = document.createElement("a")
+
+  link.href = href
+  link.textContent = title
+  link.dataset.kind = "article"
+
+  // 中文注释：textContent 不会把 title 当 HTML 解析，适合外部文本。
+  return link
+}
+```
+
+批量插入使用 DocumentFragment：
+
+```ts
+function renderList(items: string[]) {
+  const fragment = document.createDocumentFragment()
+
+  items.forEach((item) => {
+    const li = document.createElement("li")
+    li.textContent = item
+    fragment.append(li)
+  })
+
+  document.querySelector("#list")?.replaceChildren(fragment)
+}
+```
+
+传统插入 API 仍有价值：
+
+```ts
+const container = document.querySelector("#container")
+const marker = document.querySelector("#marker")
+const node = document.createElement("p")
+
+node.textContent = "插入到 marker 前"
+
+if (container && marker) {
+  // 中文注释：insertBefore 适合需要精确控制插入位置的场景。
+  container.insertBefore(node, marker)
+}
+```
 
 ## 实践
 
-内容待补充...
+DOM 更新应遵循：
+
+1. 读写分离：先读几何信息，再批量写 DOM。
+2. 最小更新：使用 `replaceChildren()`、片段或框架 diff，避免反复重排。
+3. 安全默认：外部文本用 `textContent`，HTML 白名单用可信 sanitizer。
+4. 状态分离：业务状态不要只存在 `dataset`，它更适合与 CSS、测试和少量行为挂钩。
+
+```ts
+function setExpanded(button: HTMLButtonElement, expanded: boolean) {
+  button.ariaExpanded = String(expanded)
+  button.dataset.expanded = String(expanded)
+  // 中文注释：ARIA 表达可访问语义，dataset 只辅助样式或脚本选择。
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 直接拼接 `innerHTML` | 外部内容使用 `textContent` 或 sanitizer |
+| 循环中频繁插入真实 DOM | 使用 DocumentFragment 或一次性 `replaceChildren` |
+| 用 `dataset` 保存复杂状态 | 复杂状态放数据层，dataset 只保存轻量标记 |
+| 删除节点但保留引用 | 清理数组、Map、监听器和 Observer |
+| 用 DOM API 绕过框架状态 | 框架组件内优先走框架状态更新 |
+
+## 参考资料
+
+- [MDN: Document.createElement](https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement)
+- [MDN: Element.replaceChildren](https://developer.mozilla.org/en-US/docs/Web/API/Element/replaceChildren)
+- [MDN: HTMLElement.dataset](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset)

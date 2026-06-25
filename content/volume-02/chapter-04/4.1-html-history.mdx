@@ -6,24 +6,110 @@ chapter: "第 4 章 HTML 全景"
 section: "4.1"
 tags: ["HTML", "HTML5", "WHATWG", "Web标准"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.2 文档元数据：DOCTYPE、lang 属性、charset、Viewport Meta、Open Graph / Twitter Cards"
+    slug: "volume-02/chapter-04/4.2-metadata"
+  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
+    slug: "volume-02/chapter-04/4.3-semantic"
+crossRefs:
+  - title: "3.4 安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP"
+    slug: "volume-01/chapter-03/3.4-security-headers"
+  - title: "4.2 文档元数据：DOCTYPE、lang 属性、charset、Viewport Meta、Open Graph / Twitter Cards"
+    slug: "volume-02/chapter-04/4.2-metadata"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+HTML 是 Web 文档和应用的结构语言。它的发展不是从“标签集合”走向“更多标签”，而是从静态文档逐步扩展为包含语义、表单、多媒体、离线能力、历史管理、组件模型和交互控件的浏览器平台基础。
+
+| 阶段 | 关键特征 | 工程影响 |
+|---|---|---|
+| HTML 2.0 | 标准化早期 HTML 表单、链接、图片、标题等基础能力 | 奠定文档结构和超链接模型 |
+| HTML 4.x | 强化样式与结构分离，配合 CSS 和 DOM | 页面结构、脚本和样式开始分工 |
+| XHTML 1.0 | 用 XML 语法约束 HTML | 语法严格，但浏览器生态最终没有全面转向 XML |
+| HTML5 | 多媒体、语义化、表单增强、Canvas、Web Storage 等能力进入平台 | 前端应用不再完全依赖插件 |
+| Living Standard | WHATWG 持续维护，标准随浏览器实现演进 | 开发者需要跟踪兼容性和实际实现 |
+
+现代 HTML 的关键设计是“错误容忍”。浏览器会用明确的 HTML 解析算法处理不完整、嵌套错误或大小写混乱的文档，保证旧页面仍能运行。这也是为什么 HTML 和 XHTML 的工程体验差异很大：HTML 更重视兼容现实 Web，XHTML 更强调 XML 语法严格性。
+
+<Callout type="info" title="HTML5 不是一个固定终点">
+今天更准确的说法是 HTML Living Standard。新能力会持续进入 HTML、DOM、CSS、Fetch、URL、Encoding 等相互关联的标准，而不是等待一个新的“HTML6”整体发布。
+</Callout>
 
 ## 用法
 
-内容待补充...
+现代 HTML 文档的最小基础结构应明确文档模式、语言、字符集、视口和主体结构。
+
+```html
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>订单中心</title>
+  </head>
+  <body>
+    <main>
+      <h1>订单中心</h1>
+    </main>
+  </body>
+</html>
+```
+
+`<!doctype html>` 会让浏览器进入标准模式。缺少或使用历史 doctype 可能触发怪异模式，影响盒模型、布局和默认行为。`lang` 会影响屏幕阅读器发音、自动翻译、拼写检查和搜索引擎理解；`charset` 应尽早声明，避免解析早期字节时出现乱码或安全问题。
+
+HTML 不是替代 CSS 和 JavaScript 的工具。比较可靠的分工是：
+
+| 层 | 负责内容 | 典型产物 |
+|---|---|---|
+| HTML | 结构、语义、表单、可访问性基础 | `main`、`form`、`button`、`label` |
+| CSS | 布局、视觉、响应式、动画 | Grid、Flexbox、媒体查询 |
+| JavaScript | 状态、业务逻辑、动态交互 | 表单提交、路由、数据渲染 |
 
 ## 实践
 
-内容待补充...
+在团队项目中，HTML 质量应作为组件质量的一部分审查。
+
+1. 页面只有一个清晰的 `h1`，标题层级不跳跃。
+2. 可点击动作优先用 `button`，导航优先用 `a href`。
+3. 表单项使用 `label`、`name`、`autocomplete` 和原生验证属性。
+4. 页面主体使用 `main`，导航使用 `nav`，页脚使用 `footer`。
+5. 不用 `div` 和点击事件模拟所有控件。
+6. 组件库在封装时保留原生元素语义和键盘行为。
+
+```tsx
+type SubmitButtonProps = {
+  loading: boolean
+  children: React.ReactNode
+}
+
+export function SubmitButton({ loading, children }: SubmitButtonProps) {
+  return (
+    <button type="submit" disabled={loading} aria-busy={loading}>
+      {/* 中文注释：保留 button 原生提交、禁用、键盘和可访问性语义。 */}
+      {loading ? "提交中..." : children}
+    </button>
+  )
+}
+```
+
+如果一个组件封装后丢失了原生语义，例如把按钮渲染成 `div`，后续就需要额外补键盘事件、焦点管理、ARIA 状态和禁用态，维护成本更高。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 把 HTML 当作无语义容器 | 搜索、可访问性、表单和浏览器默认行为都会受损 | 优先选择语义正确的原生元素 |
+| 认为 XHTML 写法更“高级” | 在 `text/html` 中并不等同于 XML 解析 | 按 HTML Living Standard 编写现代页面 |
+| 缺少 doctype | 可能进入怪异模式，布局表现异常 | 所有页面使用 `<!doctype html>` |
+| 只依赖框架组件 | 框架不能自动修复错误语义 | 审查组件最终渲染出的 HTML |
+| 不关注标准变化 | Popover、Dialog 等原生能力会改变最佳实践 | 跟踪 WHATWG、MDN 和浏览器兼容性 |
+
+## 参考资料
+
+- [WHATWG HTML Living Standard](https://html.spec.whatwg.org/)
+- [WHATWG HTML: Introduction](https://html.spec.whatwg.org/multipage/introduction.html)
+- [MDN: HTML basics](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content/Basic_HTML_syntax)

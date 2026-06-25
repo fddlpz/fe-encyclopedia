@@ -6,24 +6,138 @@ chapter: "第 5-A 章 浏览器兼容性与渐进增强"
 section: "5a.1"
 tags: ["兼容性", "渐进增强", "Polyfill", "Baseline"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
 related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+crossRefs:
+  - title: "5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View Transitions"
+    slug: "volume-02/chapter-05/5.12-css-new-features"
+  - title: "6.1 JS 历史与标准：ES1-6 里程碑、TC39 流程、ES 年度版本、Babel 转译原理"
+    slug: "volume-02/chapter-06/6.1-js-history"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+浏览器兼容性不是“能不能用某个 API”这么简单，而是目标用户、目标浏览器、业务关键路径、降级成本和维护成本之间的工程决策。现代 Web 平台可以用三个层级判断能力成熟度：
+
+| 层级 | 含义 | 使用建议 |
+|---|---|---|
+| 标准状态 | 规范处于草案、候选推荐或稳定阶段 | 判断长期方向，不等于可直接上线 |
+| 浏览器支持 | Chrome、Edge、Firefox、Safari 等实现情况 | 结合目标用户数据判断 |
+| Baseline | WebDX 对现代主流浏览器可用性的归类 | 作为沟通和选型的参考，但仍需看业务矩阵 |
+
+渐进增强的原则是：核心功能用最稳的能力实现，新能力只增强体验。优雅降级则是反向思路：先使用高级能力，再为低能力环境准备退路。实际项目通常两者结合，但核心链路应优先渐进增强。
 
 ## 用法
 
-内容待补充...
+用 `@supports` 做 CSS 能力探测：
+
+```css
+.card {
+  display: block;
+}
+
+@supports (container-type: inline-size) {
+  .card {
+    /* 中文注释：支持容器查询时启用组件级响应式能力 */
+    container-type: inline-size;
+  }
+}
+```
+
+用运行时探测保护 JS API：
+
+```ts
+function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    // 中文注释：现代浏览器走 Clipboard API，需要安全上下文和权限策略配合
+    return navigator.clipboard.writeText(text)
+  }
+
+  // 中文注释：旧环境返回明确失败，调用方决定是否提示用户手动复制
+  return Promise.reject(new Error("当前浏览器不支持自动复制"))
+}
+```
+
+Browserslist 用于声明构建目标：
+
+```txt
+# 中文注释：示例目标，真实项目应结合访问日志和业务要求调整
+last 2 Chrome versions
+last 2 Edge versions
+last 2 Firefox versions
+last 2 Safari versions
+not dead
+```
+
+Polyfill、Ponyfill、Transpile 要区分：
+
+| 方式 | 作用 | 例子 |
+|---|---|---|
+| Polyfill | 修改或补齐全局 API | `Promise`、`fetch` |
+| Ponyfill | 不污染全局，按函数导入 | 独立工具函数 |
+| Transpile | 语法转换，不补运行时 API | Babel、TypeScript、SWC |
 
 ## 实践
 
-内容待补充...
+兼容性治理建议建立固定流程：
+
+1. 定义目标矩阵：浏览器版本、设备类型、WebView、企业内核、可访问性模式。
+2. 查证能力：优先看 MDN 兼容性表、Can I Use、Web Platform Baseline 和官方规范。
+3. 设计回退：核心功能必须可用，增强功能可以缺席。
+4. 构建兜底：用 Browserslist、Autoprefixer、Babel/SWC 和按需 polyfill 控制产物。
+5. 真实验证：用 Playwright 或 BrowserStack 等工具覆盖关键路径。
+
+```ts
+type BrowserCapability = {
+  name: string
+  supported: boolean
+  fallback: string
+}
+
+const capabilities: BrowserCapability[] = [
+  {
+    name: "View Transitions",
+    supported: "startViewTransition" in document,
+    fallback: "直接切换页面内容，不播放过渡动画",
+  },
+]
+
+// 中文注释：兼容性结果可以进入日志，帮助判断是否值得继续保留回退
+console.table(capabilities)
+```
+
+对 CSS 新特性，优先写静态可用版本，再增强：
+
+```css
+.toc {
+  position: sticky;
+  inset-block-start: 16px;
+}
+
+@supports (animation-timeline: scroll()) {
+  .toc-progress {
+    /* 中文注释：滚动驱动动画只是阅读增强，失败不影响目录使用 */
+    animation-timeline: scroll(root);
+  }
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只看 Chrome 支持 | 同时检查 Safari、Firefox、移动端和内嵌 WebView |
+| 把 Babel 当 polyfill | 语法转换不等于运行时 API 补齐 |
+| 无条件引入大型 polyfill | 按目标浏览器和功能路径拆分，避免拖慢现代浏览器 |
+| 回退路径无人验证 | 把回退纳入自动化或手工验收清单 |
+| Baseline 当绝对上线标准 | Baseline 是通用参考，业务仍需结合用户分布 |
+
+## 参考资料
+
+- [web.dev: Baseline](https://web.dev/baseline)
+- [MDN: Browser compatibility data](https://developer.mozilla.org/en-US/docs/MDN/Writing_guidelines/Page_structures/Compatibility_tables)
+- [Can I use](https://caniuse.com/)
+- [Browserslist](https://github.com/browserslist/browserslist)
+- [Autoprefixer](https://github.com/postcss/autoprefixer)

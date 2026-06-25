@@ -6,24 +6,184 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.12"
 tags: ["CSS新特性", "@layer", "View Transitions", "滚动驱动"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.11 CSS 预处理器：Sass/SCSS、Less、Stylus"
+    slug: "volume-02/chapter-05/5.11-preprocessors"
+  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
+    slug: "volume-02/chapter-05/5.10-css-architecture"
+crossRefs:
+  - title: "5.11 CSS 预处理器：Sass/SCSS、Less、Stylus"
+    slug: "volume-02/chapter-05/5.11-preprocessors"
+  - title: "5a.1 浏览器兼容性与渐进增强"
+    slug: "volume-02/chapter-05a/5a-browser-compat"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+近几年 CSS 的变化集中在三类能力：
+
+| 能力 | 解决的问题 | 使用策略 |
+|---|---|---|
+| `:has()` | 根据后代、相邻元素或状态反选父级 | 可用于表单、卡片、导航状态 |
+| `@layer` / `@scope` | 管理层叠顺序和选择器作用范围 | 适合设计系统和组件边界 |
+| `@property` | 注册可动画、可继承、有类型的自定义属性 | 适合主题、动效和图形变量 |
+| Scroll-driven Animations | 用滚动进度驱动动画 | 仍需渐进增强 |
+| View Transitions | 在 DOM 状态或页面切换之间生成过渡 | SPA 支持更成熟，跨文档能力需看目标浏览器 |
+
+这些能力不应该被当成炫技清单。它们真正的价值是减少 JS 状态同步、降低样式覆盖冲突、让浏览器承担更多原生交互能力。
 
 ## 用法
 
-内容待补充...
+`:has()` 可以根据内部状态调整父级：
+
+```css
+.field:has(input:invalid) {
+  /* 中文注释：输入无效时直接标记字段容器，不需要额外 JS 类名 */
+  border-color: var(--color-danger);
+}
+
+.card:has(.card__media) {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+}
+```
+
+`@layer` 明确覆盖顺序：
+
+```css
+@layer reset, base, components, overrides;
+
+@layer overrides {
+  .button {
+    /* 中文注释：同等特殊性下，后声明 layer 的规则优先 */
+    border-radius: 999px;
+  }
+}
+```
+
+`@scope` 限制选择器影响范围：
+
+```css
+@scope (.article-card) {
+  :scope {
+    container-type: inline-size;
+  }
+
+  .title {
+    /* 中文注释：只影响 .article-card 范围内的 .title */
+    font-size: 1.125rem;
+  }
+}
+```
+
+`@property` 注册可动画自定义属性：
+
+```css
+@property --progress {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+.meter {
+  --progress: 0;
+  background: conic-gradient(var(--color-accent) calc(var(--progress) * 1%), #e5e7eb 0);
+  transition: --progress 300ms ease;
+}
+
+.meter[data-value="72"] {
+  /* 中文注释：注册后自定义属性可以按 number 插值动画 */
+  --progress: 72;
+}
+```
+
+Scroll-driven Animations 需要回退：
+
+```css
+.reveal {
+  opacity: 1;
+  transform: none;
+}
+
+@supports (animation-timeline: view()) {
+  .reveal {
+    animation: reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 32%;
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+```
+
+View Transitions 在 JS 中触发：
+
+```ts
+function updateRoute(renderNextPage: () => void) {
+  if ("startViewTransition" in document) {
+    // 中文注释：支持时交给浏览器生成新旧视图过渡
+    document.startViewTransition(renderNextPage)
+    return
+  }
+
+  // 中文注释：不支持时直接更新 DOM，功能不受影响
+  renderNextPage()
+}
+```
 
 ## 实践
 
-内容待补充...
+引入新 CSS 特性时，建议使用“默认可用，增强更好”的策略：
+
+1. 默认样式必须在不支持新特性的浏览器中可读、可操作。
+2. 使用 `@supports` 包裹有兼容风险的能力。
+3. 对动画类能力同时接入 `prefers-reduced-motion`。
+4. 在目标浏览器矩阵中验证，而不是只看一个现代桌面浏览器。
+
+```css
+.dialog {
+  max-inline-size: 640px;
+  margin: auto;
+}
+
+@supports (anchor-name: --trigger) {
+  .trigger {
+    anchor-name: --trigger;
+  }
+
+  .dialog {
+    /* 中文注释：支持锚点定位时增强弹层位置，不支持时保持居中方案 */
+    position-anchor: --trigger;
+  }
+}
+```
+
+<Callout type="warning" title="区分标准成熟度和可用性">
+CSSWG 草案、MDN 页面、Chrome 新能力和 Baseline 状态不是同一件事。写入生产前要检查目标浏览器、回退路径和真实设备表现。
+</Callout>
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 用 `:has()` 写过重选择器 | 保持选择器局部，避免全局深层扫描 |
+| `@layer` 顺序分散 | 在入口 CSS 一次声明全部 layer 顺序 |
+| `@scope` 当成 CSS Modules 替代品 | 它限制选择器范围，不处理构建、哈希和依赖关系 |
+| 新动画无回退 | 默认先写静态样式，再用 `@supports` 增强 |
+| View Transitions 影响可访问性 | 保持焦点管理、页面标题、滚动位置和减少动画偏好 |
+
+## 参考资料
+
+- [MDN: :has()](https://developer.mozilla.org/en-US/docs/Web/CSS/:has)
+- [MDN: @layer](https://developer.mozilla.org/en-US/docs/Web/CSS/@layer)
+- [MDN: @property](https://developer.mozilla.org/en-US/docs/Web/CSS/@property)
+- [MDN: View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API)
+- [CSSWG: Scroll-driven Animations](https://drafts.csswg.org/scroll-animations-1/)

@@ -6,24 +6,124 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.3"
 tags: ["CSS单位", "变量", "颜色", "响应式"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.2 选择器体系：基础选择器、组合器、伪类、伪元素、Specificity、:is/:where/:has"
+    slug: "volume-02/chapter-05/5.2-selectors"
+  - title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
+    slug: "volume-02/chapter-05/5.4-visual-formatting"
+  - title: "5.1 CSS 基础模型：盒模型、BFC、包含块、层叠上下文"
+    slug: "volume-02/chapter-05/5.1-box-model"
+crossRefs:
+  - title: "5.2 选择器体系：基础选择器、组合器、伪类、伪元素、Specificity、:is/:where/:has"
+    slug: "volume-02/chapter-05/5.2-selectors"
+  - title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
+    slug: "volume-02/chapter-05/5.4-visual-formatting"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+CSS 值系统定义属性能接受哪些数据类型，例如长度、百分比、颜色、图片、角度、时间、函数和关键字。单位选择会直接影响响应式、可访问性和主题系统。
+
+| 类型 | 示例 | 使用建议 |
+|---|---|---|
+| 绝对长度 | `px` | 边框、图标、细节尺寸 |
+| 字体相对 | `em`、`rem` | 字号、间距、组件比例 |
+| 视口相对 | `vw`、`vh`、`svh`、`lvh`、`dvh` | 全屏布局，注意移动端视口变化 |
+| 容器相对 | `cqw`、`cqh` | 容器查询场景 |
+| 百分比 | `50%` | 相对于包含块或属性定义的参照 |
+| 函数 | `calc()`、`min()`、`max()`、`clamp()` | 流体尺寸和约束 |
+| 自定义属性 | `--color-primary` | 主题和设计 token |
+
+CSS 自定义属性参与层叠和继承，和 Sass 变量不同。它们在浏览器运行时解析，因此可以用于主题切换、组件配置和响应式覆盖。
 
 ## 用法
 
-内容待补充...
+常见 token 写法：
+
+```css
+:root {
+  --color-bg: oklch(99% 0 0);
+  --color-text: oklch(20% 0.02 260);
+  --space-3: 0.75rem;
+  --radius-md: 0.5rem;
+}
+
+.card {
+  color: var(--color-text);
+  background: var(--color-bg);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+}
+```
+
+流体字号：
+
+```css
+.page-title {
+  font-size: clamp(2rem, 1.5rem + 2vw, 4rem);
+}
+```
+
+响应式图片和背景可结合 `image-set()`：
+
+```css
+.hero {
+  background-image: image-set(
+    url("/hero.avif") type("image/avif"),
+    url("/hero.webp") type("image/webp"),
+    url("/hero.jpg") type("image/jpeg")
+  );
+}
+```
+
+颜色建议逐步使用更接近感知一致性的颜色空间，例如 `oklch()`，但要结合目标浏览器和设计工具链确认支持。
 
 ## 实践
 
-内容待补充...
+设计 token 建议分层：
+
+| 层级 | 示例 | 说明 |
+|---|---|---|
+| 原始值 | `--blue-600` | 色板和尺度 |
+| 语义值 | `--color-primary` | 业务含义 |
+| 组件值 | `--button-bg` | 组件内部接口 |
+
+```css
+:root {
+  --blue-600: oklch(55% 0.18 255);
+  --color-primary: var(--blue-600);
+  --button-bg: var(--color-primary);
+}
+
+[data-theme="dark"] {
+  --color-primary: oklch(70% 0.14 255);
+}
+```
+
+单位选择建议：
+
+1. 字体和文本相关尺寸优先使用 `rem`。
+2. 组件内部相对图标或文本的间距可用 `em`。
+3. 边框和细线可用 `px`。
+4. 全屏高度优先考虑 `dvh`/`svh` 的移动端差异。
+5. 宽度约束结合 `min()`、`max()`、`clamp()`。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 全站只用 px | 用户缩放和响应式不灵活 | 字号和间距使用 rem/token |
+| 滥用 `100vh` | 移动端地址栏导致内容被遮挡 | 使用 `dvh`、`svh` 或布局兜底 |
+| 自定义属性缺少 fallback | 局部覆盖缺失时样式异常 | `var(--token, fallback)` |
+| 颜色 token 只存视觉名 | 主题切换难维护 | 建立语义 token |
+| `calc()` 中单位不兼容 | 计算无效 | 确认属性接受的值类型 |
+
+## 参考资料
+
+- [W3C: CSS Values and Units Level 3](https://www.w3.org/TR/css-values-3/)
+- [MDN: CSS values and units](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Values_and_units)
+- [MDN: Using CSS custom properties](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_cascading_variables/Using_CSS_custom_properties)
+- [MDN: CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value)

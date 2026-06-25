@@ -73,8 +73,8 @@
     @apply prose-h4:text-lg prose-h4:mt-6 prose-h4:mb-2;
     @apply prose-p:leading-7 prose-p:my-4;
     @apply prose-a:text-primary prose-a:no-underline hover:prose-a:underline;
-    @apply prose-code:text-sm prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:bg-muted;
-    @apply prose-pre:bg-transparent prose-pre:p-0;
+    @apply prose-code:text-sm prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:bg-muted prose-code:text-foreground;
+    @apply prose-pre:bg-transparent prose-pre:p-0 prose-pre:text-foreground;
     @apply prose-ul:my-4 prose-ol:my-4;
     @apply prose-li:my-1;
     @apply prose-table:w-full prose-table:my-6;
@@ -85,24 +85,48 @@
     @apply prose-hr:border-border;
   }
 
-  [data-rehype-pretty-code-fragment] {
+  /*
+   * 代码块样式说明：
+   * rehype-pretty-code v0.13 使用 figure 标记，旧版本使用 fragment 标记。
+   * 两种选择器都保留，避免依赖升级后代码块背景和字体颜色失效。
+   */
+  [data-rehype-pretty-code-fragment],
+  figure[data-rehype-pretty-code-figure] {
     @apply relative;
   }
 
-  [data-rehype-pretty-code-fragment] pre {
-    @apply overflow-x-auto rounded-lg border bg-muted/50 p-4 text-sm leading-relaxed;
+  [data-rehype-pretty-code-fragment] pre,
+  figure[data-rehype-pretty-code-figure] pre,
+  .prose-custom pre {
+    @apply overflow-x-auto rounded-lg border bg-slate-950 p-4 text-sm leading-relaxed text-slate-100 shadow-sm dark:bg-slate-950 dark:text-slate-100;
   }
 
   [data-rehype-pretty-code-title] {
     @apply -mb-2 rounded-t-lg border-x border-t bg-muted px-4 py-2 text-xs font-medium text-muted-foreground;
   }
 
-  [data-rehype-pretty-code-fragment] [data-line] {
+  [data-rehype-pretty-code-fragment] [data-line],
+  figure[data-rehype-pretty-code-figure] [data-line] {
     @apply px-4;
   }
 
-  [data-rehype-pretty-code-fragment] pre > code {
-    @apply grid;
+  [data-rehype-pretty-code-fragment] pre > code,
+  figure[data-rehype-pretty-code-figure] pre > code,
+  .prose-custom pre > code {
+    @apply grid bg-transparent p-0 text-inherit;
+  }
+
+  .prose-custom pre code::before,
+  .prose-custom pre code::after {
+    content: none;
+  }
+
+  .prose-custom table {
+    @apply text-foreground;
+  }
+
+  .prose-custom thead {
+    @apply border-b border-border;
   }
 
   [data-highlighted-line] {

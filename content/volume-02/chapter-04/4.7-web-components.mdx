@@ -6,24 +6,138 @@ chapter: "第 4 章 HTML 全景"
 section: "4.7"
 tags: ["Web Components", "Shadow DOM", "Custom Elements", "组件化"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
+    slug: "volume-02/chapter-04/4.6-a11y"
+  - title: "4.8 新兴的 HTML API：Popover API、Dialog 元素、Details 元素动画、Anchor Positioning"
+    slug: "volume-02/chapter-04/4.8-new-html-apis"
+  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
+    slug: "volume-02/chapter-04/4.5-multimedia"
+crossRefs:
+  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
+    slug: "volume-02/chapter-04/4.6-a11y"
+  - title: "4.8 新兴的 HTML API：Popover API、Dialog 元素、Details 元素动画、Anchor Positioning"
+    slug: "volume-02/chapter-04/4.8-new-html-apis"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+Web Components 是一组浏览器原生组件技术，主要包括 Custom Elements、Shadow DOM、HTML Templates 和 Slots。它的目标是让组件能跨框架复用，并拥有明确的生命周期、封装边界和内容投影能力。
+
+| 技术 | 作用 | 注意点 |
+|---|---|---|
+| Custom Elements | 定义自定义 HTML 元素 | 名称必须包含短横线 |
+| Shadow DOM | 封装 DOM 和样式 | 不是安全沙箱，不隔离所有外部影响 |
+| `template` | 声明惰性 DOM 模板 | 内容不会立即渲染 |
+| `slot` | 把外部内容投影到 Shadow DOM | 保留使用者提供的 light DOM 内容 |
+
+Web Components 和 React/Vue 组件不是同一层抽象。Web Components 更接近浏览器平台原语，适合设计系统、跨技术栈组件和微前端边界；React/Vue 更擅长应用状态、渲染调度和生态集成。
+
+<Callout type="info" title="Shadow DOM 不是安全边界">
+Shadow DOM 提供样式和结构封装，但页面脚本仍在同一 JavaScript 执行环境中。不要把它当作隔离不可信代码的安全机制。
+</Callout>
 
 ## 用法
 
-内容待补充...
+一个最小自定义元素：
+
+```ts
+class UserBadge extends HTMLElement {
+  connectedCallback() {
+    const name = this.getAttribute("name") ?? "匿名用户"
+
+    // 中文注释：connectedCallback 在元素插入文档时触发，适合初始化内部结构。
+    this.innerHTML = `<span>${name}</span>`
+  }
+}
+
+customElements.define("user-badge", UserBadge)
+```
+
+带 Shadow DOM、模板和插槽的组件：
+
+```html
+<template id="notice-card-template">
+  <style>
+    article {
+      border: 1px solid #ddd;
+      padding: 12px;
+    }
+  </style>
+  <article>
+    <h2><slot name="title">通知</slot></h2>
+    <div><slot></slot></div>
+  </article>
+</template>
+
+<notice-card>
+  <span slot="title">系统维护</span>
+  <p>今晚 22:00 到 23:00 进行维护。</p>
+</notice-card>
+```
+
+```ts
+class NoticeCard extends HTMLElement {
+  connectedCallback() {
+    const template = document.querySelector<HTMLTemplateElement>("#notice-card-template")
+    const shadow = this.attachShadow({ mode: "open" })
+
+    // 中文注释：template.content 是惰性文档片段，需要 clone 后放入 Shadow DOM。
+    shadow.append(template!.content.cloneNode(true))
+  }
+}
+
+customElements.define("notice-card", NoticeCard)
+```
 
 ## 实践
 
-内容待补充...
+适合使用 Web Components 的场景：
+
+1. 组件需要跨 React、Vue、Angular 或原生页面复用。
+2. 设计系统希望提供框架无关的基础组件。
+3. 微前端中需要稳定的 DOM 边界和样式封装。
+4. 内容较独立，状态复杂度不高。
+5. 团队愿意维护 Web Components 的属性、事件和可访问性契约。
+
+组件 API 设计建议：
+
+| API 类型 | 示例 | 建议 |
+|---|---|---|
+| Attribute | `<user-card size="small">` | 用于字符串和声明式配置 |
+| Property | `element.user = user` | 用于复杂对象 |
+| Event | `user-card-select` | 使用自定义事件向外通知 |
+| Slot | `<span slot="avatar">` | 用于外部内容投影 |
+| CSS Parts | `::part(button)` | 暴露可控样式入口 |
+
+```ts
+this.dispatchEvent(
+  new CustomEvent("notice-close", {
+    bubbles: true,
+    composed: true,
+    detail: { reason: "user" },
+  })
+)
+```
+
+`composed: true` 允许事件穿过 Shadow DOM 边界，适合组件向外暴露业务事件。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 自定义元素名没有短横线 | 浏览器不会按自定义元素注册 | 使用 `x-name` 形式 |
+| 把复杂对象塞进 attribute | 字符串序列化易错 | 复杂数据用 property |
+| 事件不冒泡或不 composed | 外层应用监听不到 | 明确事件传播策略 |
+| Shadow DOM 中忽略 A11y | 辅助技术体验不完整 | 保留标签、角色、焦点和键盘行为 |
+| 认为 Web Components 替代框架 | 状态管理和渲染生态仍需方案 | 按复用边界选择技术 |
+
+## 参考资料
+
+- [WHATWG HTML: Custom elements](https://html.spec.whatwg.org/multipage/custom-elements.html)
+- [WHATWG DOM: Shadow trees](https://dom.spec.whatwg.org/#shadow-trees)
+- [MDN: Using templates and slots](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_templates_and_slots)
+- [web.dev: Template, slot, and shadow](https://web.dev/learn/html/template)

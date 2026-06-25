@@ -5,25 +5,136 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.8"
 tags: ["tsc", "tsconfig", "AST", "Transformer"]
-difficulty: "基础"
+difficulty: "高级"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
+    slug: "volume-02/chapter-07/7.7-type-safety"
+  - title: "7.9 类型体操与模式：HKT、类型级编程挑战、类型驱动开发（TDD）"
+    slug: "volume-02/chapter-07/7.9-type-gymnastics"
+  - title: "7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace"
+    slug: "volume-02/chapter-07/7.6-modules"
+crossRefs:
+  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
+    slug: "volume-02/chapter-07/7.7-type-safety"
+  - title: "7.9 类型体操与模式：HKT、类型级编程挑战、类型驱动开发（TDD）"
+    slug: "volume-02/chapter-07/7.9-type-gymnastics"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+TypeScript 编译流程大致分为：读取配置、解析源码为 AST、绑定符号、类型检查、转换输出和生成声明文件。`tsc` 是命令行入口，Compiler API 允许工具读取 AST、类型信息和诊断结果。
+
+| 层级 | 典型用途 |
+|---|---|
+| `tsc --noEmit` | 只做类型检查 |
+| `tsconfig.json` | 管理语言目标、模块、严格选项、声明输出 |
+| Program API | 获取 SourceFile、TypeChecker、Diagnostics |
+| Transformer | 转换 AST，常用于构建工具或实验能力 |
+| Language Service | 编辑器补全、跳转、重构 |
+
+大多数业务项目不需要直接写 Transformer。更常见的需求是用 Compiler API 做代码扫描、文档生成、类型覆盖统计或约束检查。
 
 ## 用法
 
-内容待补充...
+常用脚本：
+
+```bash
+tsc --noEmit
+tsc --showConfig
+tsc --traceResolution
+```
+
+读取 tsconfig 并创建 Program：
+
+```ts
+import ts from "typescript"
+
+function createProgramFromConfig(configPath: string) {
+  const configFile = ts.readConfigFile(configPath, ts.sys.readFile)
+
+  if (configFile.error) {
+    throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"))
+  }
+
+  const parsedConfig = ts.parseJsonConfigFileContent(
+    configFile.config,
+    ts.sys,
+    process.cwd(),
+  )
+
+  // 中文注释：Program 是类型检查和 AST 遍历的核心入口。
+  return ts.createProgram(parsedConfig.fileNames, parsedConfig.options)
+}
+```
+
+遍历 AST：
+
+```ts
+import ts from "typescript"
+
+function collectFunctionNames(sourceFile: ts.SourceFile) {
+  const names: string[] = []
+
+  function visit(node: ts.Node) {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      names.push(node.name.text)
+    }
+
+    // 中文注释：递归遍历子节点，避免漏掉嵌套声明。
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+  return names
+}
+```
 
 ## 实践
 
-内容待补充...
+工程中常见 tsconfig 分层：
+
+```json
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": true,
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src", "types"]
+}
+```
+
+库项目需要声明输出：
+
+```json
+{
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "outDir": "dist"
+  }
+}
+```
+
+需要做规则扫描时，优先考虑 ESLint 自定义规则或 ts-morph。只有必须深入类型系统、构建产物或 AST 转换时，再直接使用 Compiler API。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只看编译报错，不看真实配置 | 使用 `tsc --showConfig` 确认最终配置 |
+| 路径解析异常靠猜 | 使用 `tsc --traceResolution` 定位解析链路 |
+| Transformer 破坏 source map | 优先使用成熟工具，保留测试覆盖 |
+| 类型检查和构建混在一起 | CI 可拆分 `tsc --noEmit`、lint、test、build |
+| 声明文件未验证 | 发布前用示例项目消费 dist 类型 |
+
+## 参考资料
+
+- [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API)
+- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
+- [TypeScript Handbook: Project Configuration](https://www.typescriptlang.org/docs/handbook/tsconfig-json.html)

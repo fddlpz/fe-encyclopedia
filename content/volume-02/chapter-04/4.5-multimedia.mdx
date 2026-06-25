@@ -6,24 +6,133 @@ chapter: "第 4 章 HTML 全景"
 section: "4.5"
 tags: ["多媒体", "Video", "Audio", "响应式图片"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
+    slug: "volume-02/chapter-04/4.4-forms"
+  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
+    slug: "volume-02/chapter-04/4.6-a11y"
+  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
+    slug: "volume-02/chapter-04/4.3-semantic"
+crossRefs:
+  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
+    slug: "volume-02/chapter-04/4.4-forms"
+  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
+    slug: "volume-02/chapter-04/4.6-a11y"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+HTML 多媒体能力覆盖音视频播放、字幕轨道、响应式图片和格式回退。它的核心价值是把资源选择、播放控制、字幕呈现和可访问性入口交给浏览器，而不是全部用脚本重做。
+
+| 元素或能力 | 作用 | 关键点 |
+|---|---|---|
+| `video` | 播放视频或带字幕的媒体 | `controls`、`poster`、`preload`、`playsinline` |
+| `audio` | 播放音频 | 同样支持 `controls`、`preload` 和事件 |
+| `source` | 提供多个媒体源或格式 | 浏览器选择第一个可用格式 |
+| `track` | 外部定时文本轨道 | 字幕、说明、章节、元数据 |
+| `picture` | 根据媒体条件和格式选择图片 | 响应式和现代图片格式 |
+| `srcset` / `sizes` | 按像素密度或布局宽度选择图片 | 减少过大图片下载 |
+
+多媒体不是只关心“能不能播”。真实项目还要考虑首屏性能、自动播放策略、带宽、字幕、海报图、错误恢复和无障碍。浏览器通常会限制带声音的自动播放；静音、用户手势、站点历史行为和平台策略都会影响播放结果。
 
 ## 用法
 
-内容待补充...
+视频基础写法：
+
+```html
+<video
+  controls
+  preload="metadata"
+  poster="/media/intro-poster.jpg"
+  playsinline
+  width="960"
+  height="540"
+>
+  <source src="/media/intro.webm" type="video/webm" />
+  <source src="/media/intro.mp4" type="video/mp4" />
+  <track
+    kind="captions"
+    src="/media/intro.zh-CN.vtt"
+    srclang="zh-CN"
+    label="中文字幕"
+    default
+  />
+  当前浏览器不支持 HTML 视频播放。
+</video>
+```
+
+WebVTT 字幕最小格式：
+
+```text
+WEBVTT
+
+00:00:01.000 --> 00:00:04.000
+欢迎观看本节课程。
+
+00:00:05.000 --> 00:00:08.000
+接下来介绍 HTML 多媒体能力。
+```
+
+响应式图片示例：
+
+```html
+<picture>
+  <source type="image/avif" srcset="/hero.avif" />
+  <source type="image/webp" srcset="/hero.webp" />
+  <img
+    src="/hero.jpg"
+    srcset="/hero-640.jpg 640w, /hero-1280.jpg 1280w"
+    sizes="(max-width: 768px) 100vw, 720px"
+    width="1280"
+    height="720"
+    alt="产品仪表盘界面截图"
+    loading="lazy"
+  />
+</picture>
+```
+
+`width` 和 `height` 可帮助浏览器预留布局空间，减少 CLS。`alt` 应描述图片内容或用途，装饰图才使用空 `alt=""`。
 
 ## 实践
 
-内容待补充...
+多媒体上线检查：
+
+1. 视频提供 MP4/H.264 等主流兜底格式，必要时提供 WebM。
+2. 关键视频必须提供字幕，教育、会议、课程类内容还应提供转写文本。
+3. 首屏视频不要默认下载完整文件，优先 `preload="metadata"` 或按需加载。
+4. 移动端内联播放使用 `playsinline`，但仍要尊重用户手势和平台策略。
+5. 图片使用现代格式和合适尺寸，不要让移动端下载桌面大图。
+6. 媒体错误要可观测，记录加载失败、解码失败、播放中断等状态。
+
+```ts
+const video = document.querySelector<HTMLVideoElement>("video")
+
+video?.addEventListener("error", () => {
+  // 中文注释：媒体错误应上报资源地址、networkState 和 error.code，便于区分网络、格式和解码问题。
+  console.log({
+    src: video.currentSrc,
+    networkState: video.networkState,
+    errorCode: video.error?.code,
+  })
+})
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 依赖自动播放 | 多数浏览器会限制有声自动播放 | 以用户手势触发，或静音自动播放并提供控制 |
+| 不提供字幕 | 听障用户、静音环境和搜索理解受影响 | 使用 `track kind="captions"` 和转写文本 |
+| 图片缺少尺寸 | 页面加载中发生布局偏移 | 设置 `width`、`height` 或 CSS aspect-ratio |
+| `sizes` 写错 | 浏览器选择过大图片 | 按真实布局宽度配置 |
+| 只测试一种浏览器 | 媒体格式和播放策略差异明显 | 覆盖 Chrome、Safari、Firefox 和移动端 |
+
+## 参考资料
+
+- [WHATWG HTML: Media elements](https://html.spec.whatwg.org/multipage/media.html)
+- [W3C: WebVTT](https://www.w3.org/TR/webvtt1/)
+- [WAI: Captions/Subtitles](https://www.w3.org/WAI/media/av/captions/)
+- [MDN: Responsive images](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content/HTML_images/Responsive_images)

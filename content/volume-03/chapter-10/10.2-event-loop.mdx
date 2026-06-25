@@ -5,25 +5,147 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 10 章 运行时深入"
 section: "10.2"
 tags: ["事件循环", "宏任务", "微任务", "nextTick"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "10.1 JavaScript 引擎：V8 架构、隐藏类、内联缓存、快速属性与字典模式"
+    slug: "volume-03/chapter-10/10.1-js-engine"
+  - title: "10.3 内存模型与垃圾回收：标记-清除-整理、分代回收、WeakMap/WeakRef"
+    slug: "volume-03/chapter-10/10.3-memory-model"
+  - title: "10.4 Node.js 运行时：libuv 架构、事件循环阶段、CommonJS、ES Module"
+    slug: "volume-03/chapter-10/10.4-nodejs"
+crossRefs:
+  - title: "10.1 JavaScript 引擎：V8 架构、隐藏类、内联缓存、快速属性与字典模式"
+    slug: "volume-03/chapter-10/10.1-js-engine"
+  - title: "10.3 内存模型与垃圾回收：标记-清除-整理、分代回收、WeakMap/WeakRef"
+    slug: "volume-03/chapter-10/10.3-memory-model"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+事件循环负责把同步 JavaScript、异步回调、微任务、渲染机会和宿主环境事件串起来。浏览器和 Node.js 都有事件循环，但它们的宿主能力不同：浏览器要协调用户输入、网络、计时器、DOM 更新、样式布局和绘制；Node.js 要协调 libuv、文件 I/O、网络 I/O、线程池和进程生命周期。
+
+浏览器中常用的简化模型是：执行一个任务，清空微任务队列，在合适的时机更新渲染，然后进入下一个任务。任务包括计时器、用户输入、网络回调等；微任务包括 Promise reaction、`queueMicrotask()` 和 MutationObserver 回调。微任务会在当前任务结束后尽快执行，因此连续递归排队微任务会阻塞渲染，不能当作“让出主线程”的手段。
+
+`requestAnimationFrame` 的回调通常在下一次绘制前执行，适合读取时间戳、驱动动画和批量写入视觉状态。它不是微任务，也不是通用异步队列；如果回调中做大量计算，仍然会阻塞绘制。
+
+Node.js 中，libuv 将事件循环分为 timers、pending callbacks、idle/prepare、poll、check、close callbacks 等阶段。`setTimeout` 回调在 timers 阶段执行，`setImmediate` 在 check 阶段执行。`process.nextTick()` 有独立队列，会在当前 JavaScript 调用栈结束后、进入事件循环后续阶段前处理，优先级高，滥用会饿死 I/O。
 
 ## 用法
 
-内容待补充...
+先看浏览器中的执行顺序：
+
+```ts
+console.log("sync:start")
+
+setTimeout(() => {
+  // 中文注释：计时器回调属于后续任务。
+  console.log("task:timeout")
+}, 0)
+
+queueMicrotask(() => {
+  // 中文注释：微任务会在当前同步代码结束后、下一轮任务前执行。
+  console.log("microtask:queueMicrotask")
+})
+
+Promise.resolve().then(() => {
+  // 中文注释：Promise reaction 也是微任务。
+  console.log("microtask:promise")
+})
+
+requestAnimationFrame(() => {
+  // 中文注释：动画帧回调通常在下一次绘制前执行。
+  console.log("frame:raf")
+})
+
+console.log("sync:end")
+```
+
+典型输出会先出现同步日志，再出现微任务；`setTimeout` 和 `requestAnimationFrame` 的相对顺序受刷新率、页面状态和调度时机影响，不能写依赖二者绝对先后的业务逻辑。
+
+Node.js 中要特别区分 `process.nextTick()`、Promise 微任务、`setTimeout()` 和 `setImmediate()`：
+
+```ts
+import { readFile } from "node:fs"
+
+readFile(import.meta.url, () => {
+  setTimeout(() => {
+    // 中文注释：在 I/O 回调中，计时器进入后续 timers 阶段。
+    console.log("timeout")
+  }, 0)
+
+  setImmediate(() => {
+    // 中文注释：在 I/O 回调中，setImmediate 通常先进入 check 阶段执行。
+    console.log("immediate")
+  })
+})
+```
+
+跨浏览器和 Node 写通用库时，不要把 Node 的 `process.nextTick()` 暴露为浏览器调度语义。更稳妥的抽象是区分“立即延后到微任务”“让出到下一任务”“等下一帧”三种意图。
 
 ## 实践
 
-内容待补充...
+选择调度 API 时按目标判断：
+
+| 目标 | 推荐 API | 说明 |
+|---|---|---|
+| 当前同步逻辑结束后立刻补一次状态 | `queueMicrotask` 或 Promise | 不会让出渲染，不适合长任务拆分 |
+| 把工作延后到后续任务 | `setTimeout(fn, 0)` 或 `MessageChannel` | 可让浏览器处理输入和渲染机会 |
+| 视觉更新与绘制对齐 | `requestAnimationFrame` | 适合动画、测量布局后的视觉写入 |
+| 空闲时做低优先级任务 | `requestIdleCallback` 或调度库 | 需要超时和降级策略 |
+| Node I/O 后立即调度回调 | `setImmediate` | 与 libuv check 阶段相关 |
+| Node 内部兼容旧 API 的异步化 | `process.nextTick` | 必须限制递归，避免阻塞 I/O |
+
+长任务拆分要真正让出主线程。下面的分片示例使用任务边界，而不是微任务边界：
+
+```ts
+/**
+ * 分片处理大量数据。
+ * @param items 等待处理的数据。
+ * @param consume 单条数据处理函数。
+ * @returns 所有分片完成后的 Promise。
+ */
+function processInChunks<T>(items: T[], consume: (item: T) => void): Promise<void> {
+  let index = 0
+
+  return new Promise((resolve) => {
+    const runChunk = () => {
+      const deadline = performance.now() + 8
+
+      while (index < items.length && performance.now() < deadline) {
+        // 中文注释：限制单个任务耗时，降低长任务和输入延迟风险。
+        consume(items[index])
+        index += 1
+      }
+
+      if (index < items.length) {
+        setTimeout(runChunk, 0)
+        return
+      }
+
+      resolve()
+    }
+
+    runChunk()
+  })
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 把微任务当成“下一轮事件循环” | 微任务会在当前任务结束后尽快清空，连续排队会阻塞渲染。 |
+| 用 `requestAnimationFrame` 执行重计算 | rAF 只对齐绘制时机，不会自动把重计算变轻。 |
+| 认为 `setTimeout(fn, 0)` 一定 0ms 执行 | 计时器存在最小延迟、嵌套限制和后台页节流。 |
+| 将浏览器事件循环与 Node 阶段完全等同 | Node 有 libuv 阶段和 `nextTick` 队列；浏览器还要处理渲染机会。 |
+| 滥用 `process.nextTick` | 递归 nextTick 会阻塞 Promise 微任务和 I/O，库代码要限制使用。 |
+
+## 参考
+
+- [HTML Standard: Event loops](https://html.spec.whatwg.org/multipage/webappapis.html#event-loops)
+- [MDN: queueMicrotask](https://developer.mozilla.org/en-US/docs/Web/API/Window/queueMicrotask)
+- [MDN: requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame)
+- [Node.js: The Node.js Event Loop](https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick)

@@ -6,24 +6,114 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.10"
 tags: ["Canvas", "WebGL", "WebRTC", "WebGPU"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
+    slug: "volume-03/chapter-09/9.9-workers"
+  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
+    slug: "volume-03/chapter-09/9.11-performance-api"
+  - title: "9.8 文件与二进制：File、Blob、ArrayBuffer、TypedArray、DataView、拖放 API"
+    slug: "volume-03/chapter-09/9.8-file-binary"
+crossRefs:
+  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
+    slug: "volume-03/chapter-09/9.9-workers"
+  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
+    slug: "volume-03/chapter-09/9.11-performance-api"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+多媒体 API 覆盖绘图、音频、视频、摄像头、麦克风和实时通信：
+
+| API | 能力 |
+|---|---|
+| Canvas 2D | 位图绘制、图像处理、截图 |
+| WebGL/WebGPU | GPU 图形和通用计算 |
+| Web Audio | 音频节点图、分析、合成 |
+| MediaDevices | 摄像头、麦克风、屏幕采集 |
+| WebRTC | 实时音视频和 DataChannel |
+
+这些 API 通常要求安全上下文、用户授权或明确用户手势。媒体设备权限必须按失败路径设计，不应假设用户一定授权。
 
 ## 用法
 
-内容待补充...
+Canvas DPR 适配：
+
+```ts
+function setupCanvas(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d")
+  if (!context) {
+    return
+  }
+
+  const rect = canvas.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+
+  canvas.width = Math.round(rect.width * dpr)
+  canvas.height = Math.round(rect.height * dpr)
+  context.scale(dpr, dpr)
+
+  // 中文注释：按 CSS 尺寸绘制，但底层位图使用设备像素，避免高 DPR 模糊。
+  context.fillText("Hello Canvas", 16, 24)
+}
+```
+
+获取摄像头：
+
+```ts
+async function openCamera(video: HTMLVideoElement) {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: true,
+    audio: false,
+  })
+
+  video.srcObject = stream
+  await video.play()
+
+  return () => {
+    // 中文注释：离开页面或关闭弹窗时必须停止硬件采集。
+    stream.getTracks().forEach((track) => track.stop())
+  }
+}
+```
+
+Web Audio 基础：
+
+```ts
+const audioContext = new AudioContext()
+const oscillator = audioContext.createOscillator()
+
+oscillator.connect(audioContext.destination)
+oscillator.start()
+```
 
 ## 实践
 
-内容待补充...
+多媒体工程要关注：
+
+1. 权限：摄像头、麦克风、屏幕共享都要处理拒绝和撤销。
+2. 性能：Canvas/WebGL/WebGPU 需要关注 GPU 资源释放。
+3. 兼容：WebGPU 和部分编解码能力需按目标浏览器验证。
+4. 隐私：不在无明确用户意图时启动设备采集。
+
+实时音视频应把信令、媒体采集、连接状态、网络质量和设备切换拆开治理。WebRTC 不是“一个 API 调完就通话”，它还需要 STUN/TURN、编码策略和重连策略。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 不停止 MediaStreamTrack | 弹窗关闭、路由切换时调用 `stop()` |
+| Canvas 高 DPR 模糊 | 按 DPR 设置实际位图尺寸 |
+| WebGL 资源泄漏 | 删除纹理、buffer、program，处理 context lost |
+| 自动播放失败 | 需要用户手势和浏览器策略配合 |
+| WebRTC 只测内网 | 真实网络必须配置 TURN 和弱网测试 |
+
+## 参考资料
+
+- [MDN: Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
+- [MDN: MediaDevices.getUserMedia](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+- [W3C: Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/)
+- [WebRTC: Media devices](https://webrtc.org/getting-started/media-devices)
+- [MDN: WebGPU API](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)

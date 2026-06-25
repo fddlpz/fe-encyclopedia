@@ -5,25 +5,150 @@ volume: "卷八：全栈与跨端"
 chapter: "第 28 章 可视化与图形编程"
 section: "28.3"
 tags: ["WebGL", "WebGPU", "Three.js", "3D"]
-difficulty: "基础"
+difficulty: "高级"
+status: "框架重构"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "28.2 SVG"
+    slug: "volume-08/chapter-28/28.2-svg"
+  - title: "28.4 WebGPU 计算管线"
+    slug: "volume-08/chapter-28/28.4-webgpu-compute"
+  - title: "28.1 Canvas 2D"
+    slug: "volume-08/chapter-28/28.1-canvas"
+crossRefs:
+  - title: "28.2 SVG"
+    slug: "volume-08/chapter-28/28.2-svg"
+  - title: "28.4 WebGPU 计算管线"
+    slug: "volume-08/chapter-28/28.4-webgpu-compute"
+lastUpdated: "2026-06-26"
 ---
 
-## 原理
+## 章节定位
 
-内容待补充...
+WebGL / WebGL2 / WebGPU / Three.js 不再只按“是什么、怎么用”展开，而是放回「第 28 章 可视化与图形编程」的知识链路中理解：根据数据规模、交互复杂度、渲染管线和设备能力选择 DOM、SVG、Canvas、WebGL、WebGPU 或图表库。
 
-## 用法
+> **本节要解决的真实问题**：当项目里遇到 WebGL / WebGL2 / WebGPU / Three.js、WebGL、WebGL2、WebGPU 相关设计、选型、接入或排障时，能说清楚边界、取舍、验证方式和失败后的回退策略。
 
-内容待补充...
+### 学习目标
 
-## 实践
+| 层次 | 学完后应该能做到 |
+|---|---|
+| 概念定位 | 解释 WebGL / WebGL2 / WebGPU / Three.js 在 可视化与图形编程 中解决的真实问题 |
+| 机制理解 | 拆解 WebGL、WebGL2 与失败路径 |
+| 工程判断 | 为 WebGPU 选择可验证、可回退的落地方案 |
+| 验证闭环 | 围绕“数据量多大”建立判断标准 |
 
-内容待补充...
+## 知识地图
 
-## 陷阱
+图形开发的关键是数据如何变成像素、几何、纹理和交互图层，以及每次更新会消耗哪部分管线。
 
-内容待补充...
+| 层级 | 本节关注点 | 判断证据 |
+|---|---|---|
+| 问题入口 | WebGL / WebGL2 / WebGPU / Three.js、WebGL、WebGL2 会在什么业务场景中暴露 | 监控大屏、图表分析 |
+| 运行机制 | 数据量多大；更新频率多高；交互是否复杂 | FPS、GPU memory |
+| 工程约束 | 渲染模型、数据规模、动画频率、DPR 与内存 | 兼容性、性能、安全、维护成本和回退方案 |
+| 关联知识 | 与同章和跨章内容形成可追踪链路 | 关系链接、示例代码、测试和线上数据 |
+
+### 延展关系
+
+- 同章延伸：[28.2 SVG](/volume-08/chapter-28/28.2-svg)
+- 同章延伸：[28.4 WebGPU 计算管线](/volume-08/chapter-28/28.4-webgpu-compute)
+- 同章延伸：[28.1 Canvas 2D](/volume-08/chapter-28/28.1-canvas)
+- 交叉参照：[28.2 SVG](/volume-08/chapter-28/28.2-svg)
+- 交叉参照：[28.4 WebGPU 计算管线](/volume-08/chapter-28/28.4-webgpu-compute)
+
+## 核心机制
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| WebGL / WebGL2 / WebGPU / Three.js | 图形与媒体链路把数据、几何、纹理、像素、音视频帧和交互事件映射到设备能力上。 | 用 FPS、内存、首帧、卡顿率、DPR 和事件命中数据验证。 |
+| WebGL | 围绕“更新频率多高”拆解概念边界、运行机制和失败路径。 | GPU memory |
+| WebGL2 | 围绕“交互是否复杂”拆解概念边界、运行机制和失败路径。 | paint cost |
+| WebGPU | 围绕“是否需要导出和无障碍”拆解概念边界、运行机制和失败路径。 | 事件命中 |
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+## 工程决策
+
+WebGL / WebGL2 / WebGPU / Three.js 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
+
+| 决策维度 | 应该如何判断 | 验证方式 |
+|---|---|---|
+| 渲染模型 | 按数据量、更新频率、交互复杂度、导出需求和可访问性选择技术栈。 | 用 FPS、内存、首帧、卡顿率、DPR 和事件命中数据验证。 |
+| 数据规模 | 在“图表分析”场景下判断收益、成本、失败路径和回退策略。 | GPU memory |
+| 动画频率 | 在“地图”场景下判断收益、成本、失败路径和回退策略。 | paint cost |
+| DPR 与内存 | 在“3D 场景”场景下判断收益、成本、失败路径和回退策略。 | 事件命中 |
+
+## 实战路径
+
+推荐按四步推进：
+
+1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
+2. **建立样例**：用最小代码或配置复现 WebGL / WebGL2 / WebGPU / Three.js 的核心行为，不直接在完整业务里猜测。
+3. **接入约束**：把 渲染模型、数据规模、动画频率 写进方案，说明不满足时如何降级。
+4. **验证沉淀**：用 FPS、GPU memory、paint cost 形成证据，并把结论回写到团队文档。
+
+```ts
+type ChapterDecision = {
+  objective: string
+  constraints: string[]
+  signals: string[]
+  rollback: string
+}
+
+/**
+ * 生成本节主题的落地决策记录。
+ * @param owner 负责验证和维护该方案的角色或小组。
+ * @returns 可写入技术方案或评审记录的决策对象。
+ */
+function createDecisionRecord(owner: string): ChapterDecision {
+  return {
+    objective: "WebGL / WebGL2 / WebGPU / Three.js",
+    constraints: ["WebGL / WebGL2 / WebGPU / Three.js","WebGL","WebGL2","WebGPU"],
+    signals: ["FPS","GPU memory","paint cost"],
+    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
+    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
+  }
+}
+
+console.table(createDecisionRecord("frontend"))
+```
+
+## 诊断与验证
+
+| 现象 | 定位动作 | 判断完成的证据 |
+|---|---|---|
+| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
+| 性能或稳定性退化 | 记录基线，再观察 FPS、GPU memory、paint cost | 指标回到预算内，并且关键路径有回归测试 |
+| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+
+## 常见误区
+
+| 误区 | 更可靠的处理方式 |
+|---|---|
+| 只看视觉效果而不测低端设备，会把渲染成本留给用户。 | 把问题拆到上下文、边界、证据和回退方案中验证。 |
+| 大量 DOM 渲染海量数据 | 先用最小场景复现，再决定是否升级方案。 |
+| 忽略高 DPR 内存占用 | 先用最小场景复现，再决定是否升级方案。 |
+| 只关注视觉效果忽略交互和无障碍 | 把问题拆到上下文、边界、证据和回退方案中验证。 |
+
+## 后续补写清单
+
+为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+
+- 补一张机制图：画清楚 WebGL / WebGL2 / WebGPU / Three.js、WebGL、WebGL2、WebGPU 之间的数据流、控制流或依赖关系。
+- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
+- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
+- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
+- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+
+## 参考资料
+
+- [https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
+- [https://developer.mozilla.org/en-US/docs/Web/SVG](https://developer.mozilla.org/en-US/docs/Web/SVG)
+- [https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API](https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API)
+- [https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)
+- [https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API)

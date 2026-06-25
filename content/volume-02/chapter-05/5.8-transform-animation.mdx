@@ -6,24 +6,160 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.8"
 tags: ["动画", "Transform", "Transition", "WAAPI"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.7 文本与字体：@font-face、font-display、可变字体、字体子集化、OpenType"
+    slug: "volume-02/chapter-05/5.7-text-fonts"
+  - title: "5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path"
+    slug: "volume-02/chapter-05/5.9-filter-blend"
+  - title: "5.6 响应式与自适应设计：媒体查询、容器查询、逻辑属性、clamp/min/max"
+    slug: "volume-02/chapter-05/5.6-responsive"
+crossRefs:
+  - title: "5.7 文本与字体：@font-face、font-display、可变字体、字体子集化、OpenType"
+    slug: "volume-02/chapter-05/5.7-text-fonts"
+  - title: "5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path"
+    slug: "volume-02/chapter-05/5.9-filter-blend"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+CSS 变换不会改变元素在文档流中的占位，它在绘制阶段对元素进行平移、旋转、缩放或倾斜。动画则是在时间轴上改变属性值。常见动画方案有三类：
+
+| 方案 | 适合场景 | 特点 |
+|---|---|---|
+| `transition` | 状态之间的简单过渡 | 声明少，依赖属性变化触发 |
+| `@keyframes` | 循环或多阶段动画 | 纯 CSS，可复用 |
+| Web Animations API | 需要 JS 控制播放、暂停、反转、时间轴 | 适合复杂交互和状态机 |
+
+性能上要关注渲染管线。动画 `width`、`height`、`top`、`left` 等属性通常会触发布局或绘制；动画 `transform` 和 `opacity` 更容易由合成线程处理，适合高频交互。
+
+FLIP 是一种思路：First 记录初始位置，Last 记录最终位置，Invert 用反向 transform 抵消视觉跳变，Play 再把 transform 过渡回正常状态。它常用于列表重排、卡片展开和路由切换。
 
 ## 用法
 
-内容待补充...
+简单状态变化使用 `transition`：
+
+```css
+.button {
+  transform: translateY(0);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.button:hover {
+  /* 中文注释：使用 transform 模拟上浮，避免修改布局位置 */
+  transform: translateY(-2px);
+}
+```
+
+循环动画使用 `@keyframes`：
+
+```css
+@keyframes pulse {
+  from {
+    opacity: 0.6;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.status-dot {
+  animation: pulse 900ms ease-in-out infinite alternate;
+}
+```
+
+需要 JS 控制时使用 Web Animations API：
+
+```ts
+const panel = document.querySelector<HTMLElement>(".panel")
+
+if (panel) {
+  const animation = panel.animate(
+    [
+      { opacity: 0, transform: "translateY(8px)" },
+      { opacity: 1, transform: "translateY(0)" },
+    ],
+    {
+      duration: 180,
+      easing: "ease-out",
+      fill: "both",
+    },
+  )
+
+  // 中文注释：业务状态取消时，可以直接终止动画并回到初始状态
+  animation.cancel()
+}
+```
+
+尊重用户减少动态效果偏好：
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  .status-dot,
+  .button {
+    /* 中文注释：保留最终样式，减少非必要运动 */
+    animation: none;
+    transition: none;
+  }
+}
+```
 
 ## 实践
 
-内容待补充...
+动画设计应先回答三个问题：
+
+1. 这个运动是否帮助用户理解状态变化，而不是纯装饰。
+2. 它是否可以被取消、跳过或在减少动画偏好下禁用。
+3. 它是否在低性能设备上仍然稳定。
+
+FLIP 的核心代码结构如下：
+
+```ts
+function animateFlip(element: HTMLElement, mutateLayout: () => void) {
+  const first = element.getBoundingClientRect()
+
+  mutateLayout()
+
+  const last = element.getBoundingClientRect()
+  const deltaX = first.left - last.left
+  const deltaY = first.top - last.top
+
+  // 中文注释：先把元素视觉上放回旧位置，再过渡到新位置
+  element.animate(
+    [
+      { transform: `translate(${deltaX}px, ${deltaY}px)` },
+      { transform: "translate(0, 0)" },
+    ],
+    {
+      duration: 220,
+      easing: "cubic-bezier(.2, 0, .2, 1)",
+    },
+  )
+}
+```
+
+调试动画时使用 Performance 面板观察是否频繁 Layout、Paint；使用 Layers 或 Rendering 工具检查合成层。不要长期给大量元素设置 `will-change`，它会占用内存，应只在即将动画前短暂启用。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 动画 `height: auto` | 用 grid、max-height、FLIP 或 JS 测量实际高度 |
+| 用 `top/left` 做拖拽 | 改用 `transform: translate()` |
+| 动画太多且不可关闭 | 对非关键动画接入 `prefers-reduced-motion` |
+| 滥用 `will-change` | 只对少量即将动画的元素临时使用 |
+| 动画和业务状态脱节 | JS 动画需要处理取消、完成、异常和重复触发 |
+
+## 参考资料
+
+- [MDN: Using CSS transitions](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Transitions/Using)
+- [MDN: Using CSS animations](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_animations/Using_CSS_animations)
+- [MDN: Web Animations API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Animations_API)
+- [web.dev: Animations and performance](https://web.dev/articles/animations-and-performance)

@@ -6,24 +6,131 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.7"
 tags: ["字体", "@font-face", "可变字体", "排版"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.6 响应式与自适应设计：媒体查询、容器查询、逻辑属性、clamp/min/max"
+    slug: "volume-02/chapter-05/5.6-responsive"
+  - title: "5.8 变换与动画：transform、transition、@keyframes、FLIP、Web Animations API"
+    slug: "volume-02/chapter-05/5.8-transform-animation"
+  - title: "5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid"
+    slug: "volume-02/chapter-05/5.5-modern-layout"
+crossRefs:
+  - title: "5.6 响应式与自适应设计：媒体查询、容器查询、逻辑属性、clamp/min/max"
+    slug: "volume-02/chapter-05/5.6-responsive"
+  - title: "5.8 变换与动画：transform、transition、@keyframes、FLIP、Web Animations API"
+    slug: "volume-02/chapter-05/5.8-transform-animation"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+网页字体链路由字体选择、字体加载、字形匹配和文本排版组成。浏览器会按 `font-family` 列表查找可用字体，再根据 `font-weight`、`font-style`、`font-stretch`、语言和 OpenType 特性选择具体字形。
+
+`@font-face` 用于声明可下载字体资源。`font-display` 决定字体下载期间的显示策略，会影响 FOIT（文字暂不可见）、FOUT（先显示回退字体再替换）和 CLS（字体替换导致布局偏移）。
+
+可变字体是 OpenType 的扩展能力，可以在一个字体文件中包含多种字重、宽度或斜度轴。它能减少多字重字体文件数量，但单文件仍可能很大，中文、日文、韩文字体尤其需要子集化。
 
 ## 用法
 
-内容待补充...
+基本字体声明：
+
+```css
+@font-face {
+  font-family: "InterVariable";
+  src: url("/fonts/inter-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+  /* 中文注释：只加载拉丁字符子集，减少字体体积 */
+  unicode-range: U+0000-00FF;
+}
+
+:root {
+  --font-sans: "InterVariable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+```
+
+可变字体优先使用标准属性，只有标准属性覆盖不到的轴才使用 `font-variation-settings`：
+
+```css
+.headline {
+  font-family: "InterVariable", system-ui, sans-serif;
+  font-weight: 720;
+  font-stretch: 95%;
+}
+
+.logo {
+  /* 中文注释：自定义轴没有对应 CSS 标准属性时，再使用低层级设置 */
+  font-variation-settings: "CASL" 0.35;
+}
+```
+
+OpenType 特性可用于排版增强：
+
+```css
+.article-body {
+  font-kerning: normal;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+.price {
+  /* 中文注释：表格数字宽度一致，适合价格、统计和排行榜 */
+  font-variant-numeric: tabular-nums;
+}
+```
 
 ## 实践
 
-内容待补充...
+字体性能的核心是“少、早、稳”：
+
+1. 少：控制字体家族、字重和字符集，中文字体优先考虑系统字体或按业务范围子集化。
+2. 早：关键字体可以配合 `preload`，但只预加载首屏真正需要的字体。
+3. 稳：通过 `font-display`、相近的回退字体和字体度量调整减少布局偏移。
+
+```html
+<!-- 中文注释：只预加载首屏必要字体，避免和关键 CSS、JS 抢带宽 -->
+<link
+  rel="preload"
+  href="/fonts/inter-var.woff2"
+  as="font"
+  type="font/woff2"
+  crossorigin
+/>
+```
+
+字体栈应区分正文、代码和数字场景：
+
+```css
+:root {
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-code: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+code,
+pre {
+  font-family: var(--font-code);
+}
+```
+
+对于多语言站点，避免只用视觉稿里的单一字体。需要验证中文、英文、数字、标点、长单词、粗体和斜体是否都有合适的字形回退。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 影响 | 处理建议 |
+|---|---|---|
+| 字体文件过大 | 首屏慢、移动端耗流量 | 使用 WOFF2、子集化和有限字重 |
+| 滥用 `font-display: block` | 文字短暂不可见 | 正文通常使用 `swap` 或 `optional` |
+| 只设置英文 fallback | 中文或符号回退不可控 | 为正文、代码、数字分别定义字体栈 |
+| 用 `font-variation-settings` 覆盖标准属性 | 可维护性差 | 优先 `font-weight`、`font-stretch`、`font-style` |
+| 预加载所有字体 | 抢占关键资源 | 只预加载首屏关键字体 |
+
+## 参考资料
+
+- [MDN: @font-face](https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face)
+- [MDN: Variable fonts](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Fonts/Variable_fonts)
+- [MDN: font-variation-settings](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/font-variation-settings)
+- [web.dev: Optimize webfont loading and rendering](https://web.dev/articles/optimize-webfont-loading)

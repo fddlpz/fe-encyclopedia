@@ -6,24 +6,158 @@ chapter: "第 4 章 HTML 全景"
 section: "4.4"
 tags: ["表单", "Form", "Validation", "HTML5"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
+    slug: "volume-02/chapter-04/4.3-semantic"
+  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
+    slug: "volume-02/chapter-04/4.5-multimedia"
+  - title: "4.2 文档元数据：DOCTYPE、lang 属性、charset、Viewport Meta、Open Graph / Twitter Cards"
+    slug: "volume-02/chapter-04/4.2-metadata"
+crossRefs:
+  - title: "4.3 语义化标签：article、section、nav、aside、header、footer、main、figure、time、details/summary"
+    slug: "volume-02/chapter-04/4.3-semantic"
+  - title: "4.5 多媒体：video/audio 属性与事件、WebVTT 字幕、picture 与 source、响应式图片"
+    slug: "volume-02/chapter-04/4.5-multimedia"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+HTML 表单是浏览器内建的交互系统，覆盖控件语义、键盘操作、焦点管理、自动填充、约束验证、提交编码和可访问性。框架可以增强表单，但不应破坏原生能力。
+
+| 能力 | 原生机制 | 工程价值 |
+|---|---|---|
+| 控件类型 | `email`、`number`、`date`、`file`、`search` 等 | 移动端键盘、基础验证、语义 |
+| 标签关联 | `label for` / 包裹控件 | 提升点击区域和屏幕阅读器体验 |
+| 表单提交 | `form action method` | 支持无 JS 降级和标准提交 |
+| 约束验证 | `required`、`pattern`、`min`、`max`、`step` | 减少重复校验代码 |
+| 自动填充 | `autocomplete` | 提升输入效率 |
+| 辅助输出 | `output`、错误提示、`aria-describedby` | 可解释计算结果和错误 |
+
+<Callout type="warning" title="前端校验不是安全边界">
+HTML 约束验证只能提升用户体验。服务端必须重新校验所有字段、权限、频率和业务规则。
+</Callout>
 
 ## 用法
 
-内容待补充...
+一个基础登录表单：
+
+```html
+<form action="/login" method="post">
+  <div>
+    <label for="email">邮箱</label>
+    <input
+      id="email"
+      name="email"
+      type="email"
+      autocomplete="email"
+      required
+    />
+  </div>
+
+  <div>
+    <label for="password">密码</label>
+    <input
+      id="password"
+      name="password"
+      type="password"
+      autocomplete="current-password"
+      minlength="8"
+      required
+    />
+  </div>
+
+  <button type="submit">登录</button>
+</form>
+```
+
+约束验证 API 可用于自定义错误信息：
+
+```ts
+const form = document.querySelector<HTMLFormElement>("#signup")
+const password = document.querySelector<HTMLInputElement>("#password")
+
+password?.addEventListener("input", () => {
+  // 中文注释：setCustomValidity 为空字符串时表示清除自定义错误。
+  password.setCustomValidity(
+    password.value.length >= 8 ? "" : "密码至少需要 8 个字符"
+  )
+})
+
+form?.addEventListener("submit", (event) => {
+  if (!form.checkValidity()) {
+    event.preventDefault()
+    form.reportValidity()
+  }
+})
+```
+
+`datalist` 适合提供输入建议，不适合替代严格下拉选择：
+
+```html
+<label for="city">城市</label>
+<input id="city" name="city" list="city-options" />
+<datalist id="city-options">
+  <option value="北京"></option>
+  <option value="上海"></option>
+  <option value="深圳"></option>
+</datalist>
+```
+
+`output` 适合展示由表单输入计算出的结果：
+
+```html
+<form oninput="total.value = Number(price.value) * Number(count.value)">
+  <input id="price" name="price" type="number" value="99" />
+  <input id="count" name="count" type="number" value="2" />
+  <output name="total" for="price count">198</output>
+</form>
+```
 
 ## 实践
 
-内容待补充...
+表单组件落地建议：
+
+1. 每个输入控件必须有可访问名称：`label`、`aria-label` 或 `aria-labelledby`。
+2. 错误信息使用文本展示，并通过 `aria-describedby` 关联到控件。
+3. 提交按钮要有明确 `type="submit"`，非提交按钮使用 `type="button"`。
+4. 服务端错误要回填到字段级或表单级，不能只弹 toast。
+5. 对验证码、短信、邮件等动作设置频控和状态反馈。
+6. 文件上传限制类型、大小、数量，并在服务端重新检查。
+
+```tsx
+type FieldErrorProps = {
+  id: string
+  message?: string
+}
+
+export function FieldError({ id, message }: FieldErrorProps) {
+  if (!message) return null
+
+  return (
+    <p id={id} role="alert">
+      {/* 中文注释：role=alert 让辅助技术及时读出字段错误。 */}
+      {message}
+    </p>
+  )
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 没有 `name` 属性 | 表单提交和 `FormData` 取不到字段 | 所有提交字段都设置 `name` |
+| 只用 placeholder 当标签 | 输入后提示消失，辅助技术不稳定 | 使用可见 `label` |
+| 自定义 Select 不支持键盘 | 用户无法用方向键和焦点操作 | 优先原生 `select` 或按 APG 实现 |
+| 所有按钮默认提交 | 非预期触发表单提交 | 非提交按钮写 `type="button"` |
+| 只在浏览器校验 | 可被绕过 | 服务端必须重新校验 |
+
+## 参考资料
+
+- [WHATWG HTML: Forms](https://html.spec.whatwg.org/multipage/forms.html)
+- [MDN: Client-side form validation](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms/Form_validation)
+- [MDN: The input element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input)
+- [WAI-ARIA APG: Forms and validation patterns](https://www.w3.org/WAI/ARIA/apg/)

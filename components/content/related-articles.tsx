@@ -1,9 +1,13 @@
 "use client"
 
+/**
+ * 文件功能说明：
+ * 根据当前文章标签计算相似文章，并在正文底部展示相关推荐列表。
+ */
+
 import React from "react"
 import Link from "next/link"
 import { Tag, ArrowUpRight } from "lucide-react"
-import { type DocFrontmatter } from "@/types"
 
 interface RelatedArticlesProps {
   currentTags: string[]
@@ -16,6 +20,12 @@ interface RelatedArticlesProps {
   }[]
 }
 
+/**
+ * 计算两个标签集合的 Jaccard 相似度。
+ * @param a 当前文章标签集合。
+ * @param b 候选文章标签集合。
+ * @returns 两个集合的相似度，范围为 0 到 1。
+ */
 function jaccardSimilarity(a: string[], b: string[]): number {
   const setA = new Set(a)
   const setB = new Set(b)
@@ -24,6 +34,13 @@ function jaccardSimilarity(a: string[], b: string[]): number {
   return intersection.size / union.size
 }
 
+/**
+ * 渲染与当前文章标签最相似的推荐文章。
+ * @param props.currentTags 当前文章标签。
+ * @param props.currentSlug 当前文章 slug。
+ * @param props.allDocs 全站候选文章列表。
+ * @returns React 推荐文章组件；没有推荐时返回 null。
+ */
 export function RelatedArticles({ currentTags, currentSlug, allDocs }: RelatedArticlesProps) {
   const related = allDocs
     .filter((d) => d.slug !== currentSlug)

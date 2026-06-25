@@ -6,24 +6,113 @@ chapter: "第 2 章 计算机网络协议"
 section: "2.8"
 tags: ["IP", "IPv6", "ICMP", "ARP", "网络协议"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "2.7 WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比"
+    slug: "volume-01/chapter-02/2.7-websocket"
+  - title: "2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析"
+    slug: "volume-01/chapter-02/2.6-dns"
+crossRefs:
+  - title: "2.7 WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比"
+    slug: "volume-01/chapter-02/2.7-websocket"
+  - title: "3.1 同源策略（SOP）：源的定义、限制范围、浏览器的沙箱机制"
+    slug: "volume-01/chapter-03/3.1-sop"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+本节把前端不常直接接触、但经常影响线上问题的基础协议放在一起。它们负责地址、可达性、局域网解析、自动配置和邮件收发等基础能力。
+
+| 协议 | 层级 | 作用 | 前端相关性 |
+|---|---|---|---|
+| IPv4 / IPv6 | 网络层 | 寻址和路由 | 影响域名解析、CDN 调度、地区访问 |
+| ICMP | 网络层辅助 | 传递差错和诊断信息 | `ping`、路径 MTU、不可达排查 |
+| ARP | 链路层辅助 | IPv4 地址到局域网 MAC 地址 | 局域网连通性问题 |
+| DHCP | 应用层 / 配置协议 | 自动分配 IP、网关、DNS | 办公网或设备网络异常 |
+| SMTP | 应用层 | 邮件发送 | 注册、验证码、通知邮件 |
+| POP3 / IMAP | 应用层 | 邮件收取和同步 | 邮件客户端和企业系统集成 |
+
+IPv4 地址是 32 位，IPv6 地址是 128 位。IPv6 不只是“地址更长”，还带来更大的地址空间、简化的基础头部和更强的扩展能力。对前端而言，最常见的问题是：DNS 返回了 AAAA 记录，但某些网络到 IPv6 服务不可达，导致用户请求慢或失败。
+
+ICMP 常被 `ping` 和 `traceroute` 使用，但很多服务器或网络会限制 ICMP，因此 “ping 不通” 不一定等于 HTTP 不通；反过来，HTTP 不通也不一定能通过 ICMP 解释清楚。
 
 ## 用法
 
-内容待补充...
+排查线上访问问题时，可以按协议职责选择工具。
+
+```bash
+# 查看域名解析出的地址
+nslookup www.example.com
+
+# 测试基本网络可达性，注意 ICMP 可能被禁用
+ping www.example.com
+
+# Windows 下查看到目标的大致路径
+tracert www.example.com
+
+# 检查 HTTPS 应用层是否可访问
+curl -I https://www.example.com/
+```
+
+IPv4/IPv6 双栈检查重点：
+
+| 检查项 | 目标 |
+|---|---|
+| A 记录 | IPv4 用户能访问 |
+| AAAA 记录 | IPv6 用户能访问 |
+| 证书 | 域名证书覆盖双栈入口 |
+| CDN | IPv4 和 IPv6 都能调度到健康节点 |
+| 监控 | 能按 IP 协议族拆分错误率 |
+
+邮件协议在前端系统中通常通过后端服务或第三方服务间接出现，但前端需要理解验证码和通知邮件的失败不是单纯 UI 问题。邮件送达受 DNS、SPF、DKIM、DMARC、SMTP 投递、收件方策略共同影响。
+
+```text
+用户提交邮箱
+  -> 前端调用发送验证码 API
+  -> 后端通过 SMTP 或邮件服务商投递
+  -> 收件方服务器根据 DNS 和反垃圾策略判断
+  -> 用户在邮箱或垃圾箱中收到邮件
+```
 
 ## 实践
 
-内容待补充...
+当用户反馈“网站打不开”时，不要只看前端报错。可以按下面的链路拆分：
+
+1. DNS：域名是否解析到正确 A/AAAA/CNAME。
+2. IP：解析出的地址是否在用户网络可达。
+3. TCP/UDP：目标端口是否可连接，是否被代理或防火墙拦截。
+4. TLS：证书和协议是否被浏览器接受。
+5. HTTP：状态码、缓存、重定向、CORS 是否正确。
+6. 应用：接口权限、登录态、业务错误是否正常处理。
+
+IPv6 发布建议：
+
+- 不要只添加 AAAA 记录，要确认源站、CDN、WAF、监控和日志都支持 IPv6。
+- 灰度发布并按地区、运营商、设备类型观察错误率。
+- 保留 IPv4 回退能力，避免双栈环境中单栈故障影响全量用户。
+- 对前端监控增加 `effectiveType`、地区、接口错误码、网络错误类型等维度。
+
+邮件验证码建议：
+
+- 前端显示“可能有延迟”和“检查垃圾箱”，但不要掩盖真实错误。
+- 后端返回稳定错误码，例如发送频率过高、邮箱格式错误、服务商失败。
+- 对验证码发送设置频控，避免被刷接口导致邮件服务信誉下降。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| `ping` 通就说明网站可用 | ICMP 可达不代表 TCP、TLS、HTTP 正常 | 继续用 `curl` 或浏览器验证应用层 |
+| 添加 AAAA 记录后不监控 | IPv6 用户可能失败而 IPv4 监控正常 | 按协议族拆分监控 |
+| 忽略路径 MTU | 某些网络大包异常会导致连接卡住 | 排查大响应、VPN、隧道和 ICMP 限制 |
+| 把邮件失败归因到前端 | 邮件链路跨 DNS、SMTP、反垃圾策略 | 前后端一起看投递日志和错误码 |
+| 办公网 DHCP 异常只查页面 | 用户可能拿到错误 DNS 或网关 | 检查本机网络配置和解析结果 |
+
+## 参考资料
+
+- [RFC 791: Internet Protocol](https://www.rfc-editor.org/info/rfc791/)
+- [RFC 8200: IPv6 Specification](https://datatracker.ietf.org/doc/html/rfc8200)
+- [RFC 792: Internet Control Message Protocol](https://datatracker.ietf.org/doc/html/rfc792)
+- [RFC 2131: Dynamic Host Configuration Protocol](https://datatracker.ietf.org/doc/html/rfc2131)

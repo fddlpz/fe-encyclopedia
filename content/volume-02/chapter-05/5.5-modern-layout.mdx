@@ -6,24 +6,172 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.5"
 tags: ["Flexbox", "Grid", "布局", "CSS"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
+    slug: "volume-02/chapter-05/5.4-visual-formatting"
+  - title: "5.6 响应式与自适应设计：媒体查询、容器查询、逻辑属性、clamp/min/max"
+    slug: "volume-02/chapter-05/5.6-responsive"
+  - title: "5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性"
+    slug: "volume-02/chapter-05/5.3-values-units"
+crossRefs:
+  - title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
+    slug: "volume-02/chapter-05/5.4-visual-formatting"
+  - title: "5.6 响应式与自适应设计：媒体查询、容器查询、逻辑属性、clamp/min/max"
+    slug: "volume-02/chapter-05/5.6-responsive"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+现代 CSS 布局不是一个属性解决所有问题，而是多个布局模型各司其职：
+
+| 模型 | 适合场景 | 关键能力 |
+|---|---|---|
+| Flexbox | 一维排列，导航、工具栏、按钮组、卡片内部对齐 | 主轴/交叉轴、弹性伸缩、内容对齐 |
+| Grid | 二维页面或区域布局，仪表盘、卡片墙、复杂表单 | 行列轨道、网格线、命名区域、自动布局 |
+| Multi-column | 长文本自动分栏 | 栏宽、栏数、栏间距、跨栏标题 |
+| Subgrid | 子网格继承父网格轨道 | 跨组件层级对齐列宽和行高 |
+
+Flexbox 的核心是“内容先行”：项目根据可用空间伸缩。Grid 的核心是“轨道先行”：先定义行列轨道，再把项目放进轨道。两者可以组合使用，常见模式是外层使用 Grid 定义页面结构，内层使用 Flexbox 处理局部对齐。
+
+<Callout type="info" title="先判断是一维还是二维">
+如果只需要沿一个方向排列并处理剩余空间，用 Flexbox。只要同时需要控制行和列，或者需要跨行列对齐，就优先考虑 Grid。
+</Callout>
+
+Subgrid 让子元素使用父 Grid 的行或列轨道，适合表单、卡片列表和多层组件对齐。根据 MDN 与 Web Platform Baseline，Subgrid 已经进入现代浏览器的广泛可用范围，但仍应在复杂布局中保留简化回退。
 
 ## 用法
 
-内容待补充...
+Flexbox 适合处理局部排列：
+
+```css
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar__spacer {
+  /* 中文注释：占据剩余空间，把右侧操作推到行尾 */
+  flex: 1 1 auto;
+}
+
+.toolbar__button {
+  /* 中文注释：按钮尺寸由内容决定，不被强行压缩 */
+  flex: 0 0 auto;
+}
+```
+
+Grid 适合定义整体区域：
+
+```css
+.page-shell {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.card-grid {
+  display: grid;
+  /* 中文注释：根据容器宽度自动增减列数，避免固定断点 */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+```
+
+命名区域让页面结构更清晰：
+
+```css
+.layout {
+  display: grid;
+  grid-template:
+    "header header" auto
+    "sidebar main" minmax(0, 1fr)
+    / 260px minmax(0, 1fr);
+  min-block-size: 100vh;
+}
+
+.layout__header {
+  grid-area: header;
+}
+
+.layout__sidebar {
+  grid-area: sidebar;
+}
+
+.layout__main {
+  grid-area: main;
+  min-inline-size: 0;
+}
+```
+
+Subgrid 用于跨层级对齐：
+
+```css
+.product-list {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 12px;
+}
+
+.product-row {
+  display: grid;
+  grid-column: 1 / -1;
+  /* 中文注释：子行复用父级三列轨道，保证每行价格和操作列对齐 */
+  grid-template-columns: subgrid;
+}
+```
 
 ## 实践
 
-内容待补充...
+布局选型可以按以下步骤落地：
+
+1. 先画结构：页面区域、组件内部、文本流分别处理，避免一个 Grid 包完所有层级。
+2. 固定外部约束：容器宽度、高度、滚动区域、最小内容宽度先定义清楚。
+3. 使用 `gap` 管理间距：布局间距交给父容器，组件内部留白交给组件自己。
+4. 给可收缩区域加 `min-width: 0` 或 `min-inline-size: 0`，避免长文本撑破 Grid 或 Flex 容器。
+5. 使用 DevTools 的 Flex/Grid overlay 检查轨道、间距和隐式网格。
+
+复杂后台页面可以采用这样的组合：
+
+```css
+.app {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.content {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.result-panel {
+  /* 中文注释：内容区独立滚动，不让整页滚动影响固定导航 */
+  overflow: auto;
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 根因 | 处理建议 |
+|---|---|---|
+| Flex 子项无法变窄 | 默认 `min-width: auto` 会尊重内容最小宽度 | 对可压缩区域设置 `min-inline-size: 0` |
+| Grid 出现意外列 | 自动放置生成隐式网格 | 检查 `grid-auto-flow`、`grid-auto-columns` 和项目跨度 |
+| 固定断点太多 | 只按视口宽度思考 | 用 `auto-fit`、`minmax()` 和容器查询减少断点 |
+| 复杂布局全靠绝对定位 | 脱离文档流后尺寸和可访问性更难维护 | 优先用 Grid/Flex，只把定位用于悬浮层和局部装饰 |
+| 多列布局用于交互卡片 | Multi-column 会按列流动，阅读和焦点顺序不直观 | 交互列表使用 Grid，长文本才考虑多列 |
+
+## 参考资料
+
+- [MDN: Basic concepts of flexbox](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_flexible_box_layout/Basic_concepts_of_flexbox)
+- [MDN: CSS grid layout](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout)
+- [MDN: Subgrid](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Grid_layout/Subgrid)
+- [MDN: Multiple-column layout](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_multicol_layout)

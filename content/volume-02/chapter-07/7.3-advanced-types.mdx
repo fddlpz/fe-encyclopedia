@@ -5,25 +5,119 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.3"
 tags: ["泛型", "条件类型", "映射类型", "infer"]
-difficulty: "基础"
+difficulty: "高级"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
+    slug: "volume-02/chapter-07/7.2-basic-types"
+  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
+    slug: "volume-02/chapter-07/7.4-type-utils"
+  - title: "7.1 类型系统基础：静态类型 vs 动态类型、类型推断、类型断言、unknown vs any、never"
+    slug: "volume-02/chapter-07/7.1-ts-basics"
+crossRefs:
+  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
+    slug: "volume-02/chapter-07/7.2-basic-types"
+  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
+    slug: "volume-02/chapter-07/7.4-type-utils"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+高级类型用于把重复的类型关系抽象出来。它们能表达“输入类型和输出类型之间的关系”，而不只是单个变量是什么类型。
+
+| 能力 | 作用 |
+|---|---|
+| 泛型 | 把类型作为参数传入函数、接口或类型别名 |
+| 条件类型 | 根据 `T extends U` 选择不同类型分支 |
+| 映射类型 | 遍历属性 key，批量转换属性 |
+| 模板字面量类型 | 拼接和约束字符串字面量 |
+| `infer` | 在条件类型中提取局部类型 |
+| 递归类型 | 处理树、JSON、路由路径等递归结构 |
+
+高级类型的目标是减少重复、约束 API，而不是展示复杂度。类型越靠近公共 API，越要重视可读性、编译性能和错误信息。
 
 ## 用法
 
-内容待补充...
+泛型保留输入输出关系：
+
+```ts
+function pickFirst<T>(items: readonly T[]): T | undefined {
+  return items[0]
+}
+
+const firstName = pickFirst(["Ada", "Linus"])
+// 中文注释：firstName 被推断为 string | undefined，而不是丢失为 unknown。
+```
+
+条件类型和 `infer` 提取 Promise 结果：
+
+```ts
+type UnwrapPromise<T> = T extends Promise<infer Value> ? Value : T
+
+type User = UnwrapPromise<Promise<{ id: string }>>
+```
+
+映射类型批量转换字段：
+
+```ts
+type FormErrors<T> = {
+  [Key in keyof T]?: string
+}
+
+type LoginForm = {
+  email: string
+  password: string
+}
+
+const errors: FormErrors<LoginForm> = {
+  email: "邮箱格式错误",
+}
+```
+
+模板字面量类型约束事件名：
+
+```ts
+type Entity = "user" | "order"
+type Action = "created" | "updated"
+type EventName = `${Entity}.${Action}`
+
+function subscribe(eventName: EventName) {
+  // 中文注释：只有 user.created、user.updated、order.created、order.updated 可传入。
+  console.log(eventName)
+}
+```
 
 ## 实践
 
-内容待补充...
+高级类型适合沉淀在库、框架、设计系统和跨模块工具层中。业务代码中应优先使用命名类型和中间类型，避免在函数签名里堆嵌套表达式。
+
+```ts
+type ApiResponse<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: string; message: string }
+
+type ApiData<T> = T extends { ok: true; data: infer Data } ? Data : never
+
+type ArticleList = ApiData<{ ok: true; data: { id: string; title: string }[] }>
+```
+
+递归类型要设置合理边界，避免编译器展开过深。对于深层对象路径、复杂 JSON schema 和路由推导，优先采用成熟库或生成类型，而不是手写无限递归类型。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 泛型参数没有参与关系 | 删除泛型或改成具体类型 |
+| 条件类型分发行为意外 | 用 `[T] extends [U]` 关闭联合分发 |
+| 类型表达式过长 | 拆成命名中间类型 |
+| 递归类型导致编译慢 | 限制深度，改用代码生成或更简单模型 |
+| 错误信息不可读 | 公共 API 类型要优先可解释 |
+
+## 参考资料
+
+- [TypeScript Handbook: Generics](https://www.typescriptlang.org/docs/handbook/2/generics.html)
+- [TypeScript Handbook: Conditional Types](https://www.typescriptlang.org/docs/handbook/2/conditional-types.html)
+- [TypeScript Handbook: Mapped Types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html)
+- [TypeScript Handbook: Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html)

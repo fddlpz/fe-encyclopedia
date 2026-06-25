@@ -6,24 +6,145 @@ chapter: "第 3 章 Web 安全基础"
 section: "3.2"
 tags: ["CSP", "XSS", "安全策略", "内容安全"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "3.1 同源策略（SOP）：源的定义、限制范围、浏览器的沙箱机制"
+    slug: "volume-01/chapter-03/3.1-sop"
+  - title: "3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求"
+    slug: "volume-01/chapter-03/3.3-mixed-content"
+  - title: "3.4 安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP"
+    slug: "volume-01/chapter-03/3.4-security-headers"
+crossRefs:
+  - title: "3.1 同源策略（SOP）：源的定义、限制范围、浏览器的沙箱机制"
+    slug: "volume-01/chapter-03/3.1-sop"
+  - title: "3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求"
+    slug: "volume-01/chapter-03/3.3-mixed-content"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+内容安全策略（Content Security Policy, CSP）让站点声明“当前页面允许加载和执行哪些来源的资源”。它主要用于降低 XSS、数据注入、点击劫持和混合内容风险，是防御纵深的一层，不是输入校验的替代品。
+
+CSP 通过 HTTP 响应头或部分 `meta` 写法下发。生产环境更推荐响应头，因为 `frame-ancestors`、`report-uri` 等能力不能通过 `meta` 完整表达。
+
+```http
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self' 'nonce-r4nd0m';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: https:;
+  object-src 'none';
+  base-uri 'self';
+  frame-ancestors 'none';
+  upgrade-insecure-requests;
+```
+
+常见指令：
+
+| 指令 | 作用 | 建议 |
+|---|---|---|
+| `default-src` | 其他 fetch 指令的默认回退 | 默认设为 `'self'` |
+| `script-src` | 控制脚本加载和执行 | 优先 nonce/hash，避免 `'unsafe-inline'` |
+| `style-src` | 控制样式来源 | 逐步减少内联样式依赖 |
+| `img-src` | 控制图片来源 | 按业务加入 CDN、`data:` |
+| `connect-src` | 控制 fetch、XHR、WebSocket 等连接 | 明确 API、埋点、监控域名 |
+| `frame-ancestors` | 控制谁能嵌入当前页面 | 替代或补充 X-Frame-Options |
+| `object-src` | 控制插件类资源 | 通常设为 `'none'` |
+| `base-uri` | 限制 `<base>` URL | 通常设为 `'self'` |
+
+<Callout type="warning" title="CSP 不是 XSS 根治方案">
+CSP 可以降低注入后的执行能力，但根因仍要靠输出编码、模板转义、输入约束、依赖治理和 Trusted Types 等手段处理。
+</Callout>
 
 ## 用法
 
-内容待补充...
+上线 CSP 时不要直接启用强阻断。推荐先用 Report-Only 收集违规，再逐步收紧。
+
+```http
+Content-Security-Policy-Report-Only:
+  default-src 'self';
+  script-src 'self';
+  object-src 'none';
+  base-uri 'self';
+  report-uri /csp-report
+```
+
+`report-uri` 是旧但仍常见的报告指令；CSP Level 3 引入 `report-to` 并配合 Reporting API 使用。现实项目中可同时保留兼容写法，但要知道 `report-uri` 已不再是长期方向。
+
+nonce 和 hash 的差异：
+
+| 方式 | 适用场景 | 注意点 |
+|---|---|---|
+| nonce | 服务端每次响应动态生成内联脚本授权 | nonce 必须不可预测，且每次响应不同 |
+| hash | 内容稳定的内联脚本或样式 | 内容有任何变化都要更新 hash |
+| 外链白名单 | 固定 CDN 或同源脚本 | 白名单过宽会削弱防护 |
+
+```tsx
+type HtmlProps = {
+  nonce: string
+}
+
+export function HtmlShell({ nonce }: HtmlProps) {
+  return (
+    <html lang="zh-CN">
+      <body>
+        {/* 中文注释：nonce 必须由服务端按响应生成，不能写死在源码中。 */}
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: "window.__BOOTED__=true" }} />
+      </body>
+    </html>
+  )
+}
+```
+
+严格 CSP 的目标不是“让所有资源都能加载”，而是“只有被明确授权的资源能加载”。第三方 SDK、埋点、客服、广告和 A/B 实验都会增加策略复杂度，应逐个登记来源和用途。
 
 ## 实践
 
-内容待补充...
+一个可落地的前端 CSP 推进流程：
+
+1. 盘点页面资源：脚本、样式、图片、字体、接口、WebSocket、iframe、worker。
+2. 在测试环境启用 `Content-Security-Policy-Report-Only`。
+3. 收集报告并区分真实违规、浏览器插件、第三方脚本和历史资源。
+4. 先锁定高价值页面：登录、支付、后台管理、用户资料。
+5. 移除内联脚本和 `eval` 依赖，必要时使用 nonce/hash。
+6. 切换为阻断策略，并持续监控 CSP 报告。
+
+Next.js 或 SSR 页面如果需要 nonce，应在服务端中间件或响应生成阶段创建，并同时传给响应头和页面脚本。
+
+```ts
+import crypto from "node:crypto"
+
+export function createCsp() {
+  const nonce = crypto.randomBytes(16).toString("base64")
+
+  // 中文注释：CSP 响应头和页面内脚本必须使用同一个 nonce。
+  const header = [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ")
+
+  return { nonce, header }
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 加上 `'unsafe-inline'` 后认为 CSP 有效 | 内联脚本注入仍可能执行 | 逐步迁移到 nonce/hash |
+| 白名单使用 `https:` 或 `*` | 几乎允许任意 HTTPS 资源 | 只列业务真实需要的来源 |
+| 只在 HTML 中写 `meta` CSP | 无法覆盖部分重要指令和早期加载资源 | 使用 HTTP 响应头 |
+| 忽略浏览器插件报告 | CSP 报告噪声高，容易误判 | 归类过滤插件和扩展注入 |
+| 把 `frame-src` 和 `frame-ancestors` 混淆 | 一个控制当前页加载谁，一个控制谁能嵌入当前页 | 分别按嵌入方向配置 |
+
+## 参考资料
+
+- [W3C: Content Security Policy Level 3](https://www.w3.org/TR/CSP3/)
+- [W3C: CSP Embedded Enforcement](https://www.w3.org/TR/csp-embedded-enforcement/)
+- [MDN: Content-Security-Policy report-uri](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/report-uri)
+- [OWASP: Content Security Policy Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html)

@@ -6,24 +6,102 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.1"
 tags: ["DOM", "节点", "遍历", "TreeWalker"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.2 DOM 操作 API：createElement、insertBefore、现代方法、dataset"
+    slug: "volume-03/chapter-09/9.2-dom-api"
+  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
+    slug: "volume-03/chapter-09/9.3-events"
+crossRefs:
+  - title: "8.5 内存管理：V8 堆分区、标记-清除-整理、增量标记、并发标记"
+    slug: "volume-03/chapter-08/8.5-memory-management"
+  - title: "9.2 DOM 操作 API：createElement、insertBefore、现代方法、dataset"
+    slug: "volume-03/chapter-09/9.2-dom-api"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+DOM 是文档的树形对象模型。HTML 解析器把标记转换为节点树，脚本通过 DOM API 读取和修改这棵树。DOM Standard 定义了节点树、事件、遍历、MutationObserver 等基础能力。
+
+| 类型 | 说明 |
+|---|---|
+| `Document` | 整个文档入口 |
+| `Element` | 元素节点，例如 `div`、`a` |
+| `Text` | 文本节点 |
+| `Comment` | 注释节点 |
+| `DocumentFragment` | 轻量片段容器，常用于批量插入 |
+
+`HTMLCollection` 通常是 live collection，会随 DOM 变化自动更新；`querySelectorAll()` 返回的 `NodeList` 是静态快照。遍历和修改 live collection 时要特别小心，否则循环范围会变化。
 
 ## 用法
 
-内容待补充...
+静态快照适合批量处理：
+
+```ts
+const items = document.querySelectorAll<HTMLElement>(".todo-item")
+
+items.forEach((item) => {
+  // 中文注释：querySelectorAll 返回静态 NodeList，循环期间新增节点不会影响当前集合。
+  item.dataset.ready = "true"
+})
+```
+
+Live collection 修改前先转数组：
+
+```ts
+const liveButtons = document.getElementsByTagName("button")
+const buttons = Array.from(liveButtons)
+
+buttons.forEach((button) => {
+  // 中文注释：先复制为数组，避免删除或插入 DOM 时 live 集合变化导致跳项。
+  button.disabled = false
+})
+```
+
+TreeWalker 适合精确遍历文本节点：
+
+```ts
+function collectTextNodes(root: Node) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as Text)
+  }
+
+  return textNodes
+}
+```
 
 ## 实践
 
-内容待补充...
+DOM 遍历要控制范围。全页面 `querySelectorAll("*")`、深层递归和频繁同步读取都可能带来性能问题。组件中应把 DOM 引用生命周期和组件生命周期绑定，卸载时释放监听器、Observer 和缓存。
+
+```ts
+const observer = new MutationObserver((records) => {
+  for (const record of records) {
+    // 中文注释：MutationObserver 适合观察结构变化，但回调中仍要避免重型同步布局读取。
+    console.log(record.type)
+  }
+})
+
+observer.observe(document.body, { childList: true, subtree: true })
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 修改 live collection 时跳项 | 先 `Array.from()` 固化集合 |
+| 混淆 Node 和 Element | 读取元素属性前用 `node instanceof Element` 收窄 |
+| 遍历范围过大 | 缩小根节点，必要时分页或分片处理 |
+| 长期保存 DOM 引用 | 组件卸载时释放引用，避免 detached DOM |
+| 用 DOM 顺序表达业务状态 | 业务状态保存在数据层，DOM 只做视图投影 |
+
+## 参考资料
+
+- [WHATWG DOM Standard](https://dom.spec.whatwg.org/)
+- [MDN: Node](https://developer.mozilla.org/en-US/docs/Web/API/Node)
+- [MDN: TreeWalker](https://developer.mozilla.org/en-US/docs/Web/API/TreeWalker)

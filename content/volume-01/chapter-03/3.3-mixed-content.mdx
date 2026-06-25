@@ -6,24 +6,129 @@ chapter: "第 3 章 Web 安全基础"
 section: "3.3"
 tags: ["Mixed Content", "HTTPS", "安全"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
+    slug: "volume-01/chapter-03/3.2-csp"
+  - title: "3.4 安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP"
+    slug: "volume-01/chapter-03/3.4-security-headers"
+  - title: "3.1 同源策略（SOP）：源的定义、限制范围、浏览器的沙箱机制"
+    slug: "volume-01/chapter-03/3.1-sop"
+crossRefs:
+  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
+    slug: "volume-01/chapter-03/3.2-csp"
+  - title: "3.4 安全头部：HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、COOP/COEP"
+    slug: "volume-01/chapter-03/3.4-security-headers"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+混合内容是指 HTTPS 页面加载 HTTP 资源。HTTPS 保护了主文档，但 HTTP 子资源可能被中间人读取或篡改，因此浏览器会自动升级一部分请求并阻断另一部分请求。
+
+旧资料常把混合内容分成“主动内容”和“被动内容”。现代规范更强调两类：
+
+| 类型 | 浏览器处理 | 示例 |
+|---|---|---|
+| 可升级内容 | 浏览器尝试把 `http://` 自动升级为 `https://` | 部分图片、音频、视频资源 |
+| 可阻断内容 | 浏览器直接阻断或在策略下阻断 | 脚本、样式、iframe、fetch、XHR、字体 |
+
+脚本和样式属于高风险资源，因为一旦被篡改就能执行任意逻辑或改变页面行为；图片虽然通常风险低一些，但仍可能泄露访问路径、破坏隐私或造成内容欺骗。
+
+<Callout type="warning" title="自动升级不是迁移方案">
+浏览器自动升级或 CSP 的 `upgrade-insecure-requests` 只能帮你尝试改写 URL。如果 HTTPS 资源不存在，请求仍会失败。长期方案是清理所有明文资源来源。
+</Callout>
 
 ## 用法
 
-内容待补充...
+混合内容最常在 HTTPS 改造、CDN 迁移、富文本内容、第三方 SDK 和历史模板里出现。
+
+```html
+<!-- HTTPS 页面中的不安全脚本会被阻断。 -->
+<script src="http://cdn.example.com/app.js"></script>
+
+<!-- 图片可能被自动升级，但不应依赖浏览器兜底。 -->
+<img src="http://static.example.com/banner.jpg" alt="活动图" />
+```
+
+可以使用 CSP 指令批量升级资源请求：
+
+```http
+Content-Security-Policy: upgrade-insecure-requests
+```
+
+也可以配合报告模式发现遗留 HTTP 资源：
+
+```http
+Content-Security-Policy-Report-Only:
+  default-src https:;
+  upgrade-insecure-requests;
+  report-uri /csp-report
+```
+
+构建阶段可以加入静态检查，先阻止模板和静态 HTML 中继续出现明文资源。
+
+```ts
+const insecureResourcePattern = /\b(?:src|href)=["']http:\/\//i
+
+export function assertNoInsecureResource(html: string) {
+  // 中文注释：阻止 HTTPS 页面继续引入明文 HTTP 子资源。
+  if (insecureResourcePattern.test(html)) {
+    throw new Error("发现 http:// 子资源，请改为 https://")
+  }
+}
+```
 
 ## 实践
 
-内容待补充...
+HTTPS 全站改造建议按链路推进：
+
+1. 先完成主站、API、静态资源、图片服务、上传域名的 HTTPS 支持。
+2. 扫描源码、CMS 模板、富文本、数据库历史内容和第三方配置。
+3. 对可控资源统一改成 `https://`，不要只依赖协议相对 URL。
+4. 对不可控第三方资源，要求供应商提供 HTTPS，或移除该依赖。
+5. 上线 CSP Report-Only，观察真实用户中的遗漏请求。
+6. 全量稳定后再考虑 HSTS，避免用户被强制访问尚未支持 HTTPS 的子域名。
+
+常见排查入口：
+
+| 工具 | 用途 |
+|---|---|
+| DevTools Console | 查看 Mixed Content 警告 |
+| DevTools Network | 过滤 `http://` 请求和 blocked 状态 |
+| CSP 报告接口 | 收集线上遗留资源 |
+| 构建扫描 | 阻止新增明文资源 |
+| 反向代理日志 | 查历史 HTTP 回源和重定向 |
+
+如果图片来自用户输入的富文本，保存时就应归一化 URL，而不是渲染时临时替换。
+
+```ts
+export function normalizeImageUrl(url: string) {
+  const parsed = new URL(url)
+
+  // 中文注释：只允许 HTTPS 图片进入富文本内容，避免渲染 HTTPS 页面时产生混合内容。
+  if (parsed.protocol !== "https:") {
+    throw new Error("图片地址必须使用 HTTPS")
+  }
+
+  return parsed.toString()
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 只查源码，不查数据库内容 | 富文本和历史配置仍可能输出 HTTP 资源 | 扫描实际渲染 HTML 和线上报告 |
+| 认为图片混合内容无害 | 图片可泄露路径、被替换、影响可信展示 | 统一迁移到 HTTPS |
+| 依赖 `upgrade-insecure-requests` 兜底 | HTTPS 资源不存在时仍失败 | 修复资源源头 |
+| 过早开启 HSTS includeSubDomains | 子域名未完成 HTTPS 会被强制升级导致不可访问 | 先灰度短 `max-age` |
+| 忽略第三方 SDK | 第三方脚本可能继续拉取 HTTP 子资源 | 建立第三方资源准入清单 |
+
+## 参考资料
+
+- [W3C: Mixed Content](https://www.w3.org/TR/mixed-content/)
+- [W3C: Upgrade Insecure Requests](https://www.w3.org/TR/upgrade-insecure-requests/)
+- [MDN: Mixed content](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Mixed_content)
+- [RFC 6797: HTTP Strict Transport Security](https://datatracker.ietf.org/doc/html/rfc6797)

@@ -5,25 +5,125 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 10 章 运行时深入"
 section: "10.1"
 tags: ["V8", "TurboFan", "隐藏类", "内联缓存"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "10.2 事件循环详解：宏任务队列、微任务队列、process.nextTick、requestAnimationFrame"
+    slug: "volume-03/chapter-10/10.2-event-loop"
+  - title: "10.3 内存模型与垃圾回收：标记-清除-整理、分代回收、WeakMap/WeakRef"
+    slug: "volume-03/chapter-10/10.3-memory-model"
+crossRefs:
+  - title: "9.13 新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒"
+    slug: "volume-03/chapter-09/9.13-new-web-apis"
+  - title: "10.2 事件循环详解：宏任务队列、微任务队列、process.nextTick、requestAnimationFrame"
+    slug: "volume-03/chapter-10/10.2-event-loop"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+JavaScript 引擎不是“直接执行源码”的黑盒。以 V8 为例，一段脚本通常会经历解析、生成 AST、生成 Ignition 字节码、收集运行时反馈、由 TurboFan 优化热点函数、在假设失效时去优化的过程。理解这条流水线，可以解释为什么同样的 JavaScript 在不同输入形态、对象结构或调用方式下会出现明显性能差异。
+
+V8 会根据对象属性的添加顺序和结构生成内部形状，常被称为隐藏类或 Map。对象形状稳定时，属性访问可以走快速路径；同一访问点长期命中相同或少量形状时，内联缓存可以记录访问方式并减少动态查找成本。对象频繁增删属性、同一字段在不同对象中顺序不一致、或者一个访问点混入太多形状，都会让优化假设变差，甚至退回字典模式或产生 megamorphic 调用点。
+
+这并不意味着业务代码要为引擎写“奇技淫巧”。可靠的原则是让数据结构稳定、让热路径简单、让动态字典语义显式化：
+
+- 字段在构造阶段一次性初始化，避免运行中反复给热对象补字段。
+- 相同类型的对象使用相同字段顺序，降低隐藏类分裂概率。
+- 需要动态键值表时优先使用 `Map`，不要把普通对象当无限扩展的字典。
+- 避免在热路径中 `delete` 属性；必要时用 `undefined` 或重建对象表达状态。
+- 用性能面板、采样 profiler 和最小复现验证瓶颈，不靠单次微基准判断。
+
+V8 的优化是投机式的：它基于过去的运行时反馈生成更快代码，但如果输入突然变化，就需要回退到更通用的路径。前端工程中最常见的影响面包括大列表渲染、数据归一化、状态管理 selector、序列化/反序列化、图表数据处理和 Node 服务的请求热路径。
 
 ## 用法
 
-内容待补充...
+下面的示例展示对象形状稳定与不稳定的差异。代码本身不是要求所有项目都写成类，而是强调“字段布局要稳定”。
+
+```ts
+type ProductRow = {
+  id: string
+  title: string
+  price: number
+  stock: number
+}
+
+/**
+ * 生成稳定形状的商品行。
+ * @param source 后端返回的原始商品数据。
+ * @returns 字段顺序和字段集合稳定的前端展示模型。
+ */
+function normalizeProduct(source: Partial<ProductRow>): ProductRow {
+  return {
+    // 中文注释：固定字段初始化顺序，减少同类对象形状分裂。
+    id: source.id ?? "",
+    title: source.title ?? "",
+    price: source.price ?? 0,
+    stock: source.stock ?? 0,
+  }
+}
+
+/**
+ * 读取热路径字段。
+ * @param row 已归一化的商品行。
+ * @returns 用于列表渲染的展示文案。
+ */
+function renderPrice(row: ProductRow): string {
+  return `${row.title}: ${row.price.toFixed(2)}`
+}
+
+const rows = apiRows.map(normalizeProduct)
+rows.map(renderPrice)
+```
+
+若数据来源天然是动态字典，例如埋点属性、表单字段或查询参数，用 `Map` 更能表达语义：
+
+```ts
+/**
+ * 收集动态维度。
+ * @param entries 任意来源的维度键值对。
+ * @returns 保留插入顺序且适合动态键的 Map。
+ */
+function collectDimensions(entries: Array<[string, string]>): Map<string, string> {
+  const dimensions = new Map<string, string>()
+
+  for (const [key, value] of entries) {
+    // 中文注释：动态键放入 Map，避免污染普通对象形状。
+    dimensions.set(key, value)
+  }
+
+  return dimensions
+}
+```
+
+性能分析时优先确认是不是热路径：如果函数只在页面初始化执行一次，即使隐藏类不理想也未必值得优化；如果函数在滚动、输入、动画或高 QPS 服务中频繁执行，形状稳定性才可能产生可见收益。
 
 ## 实践
 
-内容待补充...
+工程落地时，可以把 V8 相关优化分成三类。
+
+| 场景 | 优先动作 | 验证方式 |
+|---|---|---|
+| 大列表渲染 | 数据进入 UI 前统一归一化 | Chrome Performance 观察脚本耗时和长任务 |
+| 状态派生计算 | selector 保持输入结构稳定，避免混入多种返回形态 | React/Vue profiler 与采样 profiler |
+| Node 热接口 | 请求上下文对象字段固定，动态扩展放到专用 Map | `clinic`、`0x` 或内置 profiler |
+| 图表数据处理 | 分离原始数据、归一化数据和展示数据 | 对比处理阶段耗时和内存峰值 |
+
+不要把引擎优化替代算法优化。对象形状稳定只能减少运行时开销；如果算法复杂度从 `O(n²)` 降到 `O(n log n)`，收益通常更大。优化顺序应是：先减少不必要工作，再改善数据结构，最后才处理引擎层面的细节。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 看到“隐藏类”就到处重写对象 | 只有热路径才值得为对象形状付出维护成本。先用 profiler 证明瓶颈。 |
+| 在热对象上频繁 `delete` | 用 `undefined` 表示空值，或重建对象；动态字段使用 `Map`。 |
+| 微基准结论直接套到业务 | 浏览器版本、输入规模、调用形态都会影响 JIT 行为，应在真实链路验证。 |
+| 以为 `const` 会让对象不可变 | `const` 只限制绑定不可重新赋值，不冻结对象属性。需要不可变语义时使用约定、类型或冻结策略。 |
+| 把 V8 行为当 ECMAScript 标准 | 隐藏类、内联缓存和优化管线是实现细节，其他引擎可能有不同策略。 |
+
+## 参考
+
+- [V8 Blog: Fast properties in V8](https://v8.dev/blog/fast-properties)
+- [V8 Docs: Ignition](https://v8.dev/docs/ignition)
+- [V8 Docs: TurboFan](https://v8.dev/docs/turbofan)

@@ -5,25 +5,119 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 8 章 浏览器架构与渲染引擎"
 section: "8.5"
 tags: ["V8", "内存管理", "GC", "标记清除"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "8.4 光栅化与显示：软件光栅化 vs GPU 光栅化、Skia、VSync"
+    slug: "volume-03/chapter-08/8.4-rasterization"
+  - title: "8.3 渲染管线深入：解析 HTML、样式计算、布局、绘制、合成"
+    slug: "volume-03/chapter-08/8.3-rendering-pipeline"
+crossRefs:
+  - title: "8.4 光栅化与显示：软件光栅化 vs GPU 光栅化、Skia、VSync"
+    slug: "volume-03/chapter-08/8.4-rasterization"
+  - title: "9.1 DOM 标准与树结构：节点类型、节点关系与遍历、Live Collection 陷阱"
+    slug: "volume-03/chapter-09/9.1-dom-standard"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+V8 使用分代垃圾回收。新创建对象通常进入新生代，存活多次回收后晋升到老生代。这个设计基于“多数对象很快死亡”的经验假设。GC 通过可达性判断对象是否仍被引用，而不是看开发者是否“手动释放”。
+
+| 区域/机制 | 说明 |
+|---|---|
+| New Space | 存放短命对象，回收频繁 |
+| Old Space | 存放长寿命对象，回收成本更高 |
+| Scavenge | 新生代复制回收 |
+| Mark-Sweep | 标记不可达对象并清理 |
+| Mark-Compact | 清理并整理碎片 |
+| Incremental / Concurrent | 把部分工作拆分或放到后台，减少主线程停顿 |
+
+浏览器页面的内存不只有 JS heap，还包括 DOM 节点、样式、图片、GPU 纹理、ArrayBuffer、WebAssembly Memory 等。内存泄漏常见于 JS 引用链保留了本应释放的 DOM、数据或监听器。
 
 ## 用法
 
-内容待补充...
+常见泄漏来源：
+
+```ts
+const retainedNodes: HTMLElement[] = []
+
+function createDetachedNode() {
+  const element = document.createElement("div")
+  element.textContent = "leaking"
+  document.body.appendChild(element)
+  document.body.removeChild(element)
+
+  // 中文注释：元素已脱离 DOM，但仍被数组引用，GC 无法回收。
+  retainedNodes.push(element)
+}
+```
+
+正确释放资源：
+
+```ts
+function mount() {
+  const controller = new AbortController()
+
+  window.addEventListener(
+    "resize",
+    () => {
+      console.log(window.innerWidth)
+    },
+    { signal: controller.signal },
+  )
+
+  return () => {
+    // 中文注释：统一取消监听，避免组件卸载后仍保留闭包引用。
+    controller.abort()
+  }
+}
+```
+
+监控内存趋势：
+
+```ts
+function logHeap() {
+  const memory = performance.memory as
+    | { usedJSHeapSize: number; totalJSHeapSize: number }
+    | undefined
+
+  if (!memory) {
+    return
+  }
+
+  console.table({
+    usedMB: Math.round(memory.usedJSHeapSize / 1024 / 1024),
+    totalMB: Math.round(memory.totalJSHeapSize / 1024 / 1024),
+  })
+}
+```
 
 ## 实践
 
-内容待补充...
+排查内存问题的流程：
+
+1. 复现：固定操作路径，例如打开弹窗、切换路由、滚动列表 20 次。
+2. 观察：Performance Monitor 看 JS heap、DOM nodes 是否持续增长。
+3. 快照：Memory 面板拍 Heap Snapshot，对比 Retainers。
+4. 定位：查 detached DOM、闭包、缓存、全局 Map、未取消请求和监听器。
+5. 修复：卸载时清理资源，限制缓存大小，使用 AbortController。
+
+长列表和图形场景要特别关注 ArrayBuffer、Canvas、WebGL 纹理和图片解码缓存，它们可能不完全体现在 JS heap 中。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 看到 GC 波动就认为泄漏 | 关注多轮操作后基线是否持续上升 |
+| 只看 JS heap | 同时观察 DOM nodes、GPU、图片和 ArrayBuffer |
+| 忘记清理事件监听 | 使用 AbortController 或框架卸载钩子 |
+| 无限缓存 | 给 Map、LRU、图片和查询缓存设置上限 |
+| detached DOM 难定位 | 用 Heap Snapshot 的 Retainers 找引用链 |
+
+## 参考资料
+
+- [V8: Trash talk, the Orinoco garbage collector](https://v8.dev/blog/trash-talk)
+- [Chrome DevTools: Fix memory problems](https://developer.chrome.com/docs/devtools/memory-problems)
+- [Node.js Learn: Understanding and tuning memory](https://nodejs.org/learn/diagnostics/memory/understanding-and-tuning-memory)

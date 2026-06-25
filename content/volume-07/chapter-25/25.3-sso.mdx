@@ -5,25 +5,150 @@ volume: "卷七：安全与合规"
 chapter: "第 25 章 身份认证与授权"
 section: "25.3"
 tags: ["SSO", "单点登录", "SAML", "统一认证"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "框架重构"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "25.2 OAuth 2.0 / OpenID Connect"
+    slug: "volume-07/chapter-25/25.2-oauth"
+  - title: "25.4 无密码认证：WebAuthn / Passkeys"
+    slug: "volume-07/chapter-25/25.4-webauthn"
+  - title: "25.1 会话管理"
+    slug: "volume-07/chapter-25/25.1-session"
+crossRefs:
+  - title: "25.2 OAuth 2.0 / OpenID Connect"
+    slug: "volume-07/chapter-25/25.2-oauth"
+  - title: "25.4 无密码认证：WebAuthn / Passkeys"
+    slug: "volume-07/chapter-25/25.4-webauthn"
+lastUpdated: "2026-06-26"
 ---
 
-## 原理
+## 章节定位
 
-内容待补充...
+单点登录（SSO） 不再只按“是什么、怎么用”展开，而是放回「第 25 章 身份认证与授权」的知识链路中理解：区分认证、授权和会话管理，设计凭证生命周期、撤销机制和跨端安全边界。
 
-## 用法
+> **本节要解决的真实问题**：当项目里遇到 单点登录（SSO）、单点登录、SSO、SAML 相关设计、选型、接入或排障时，能说清楚边界、取舍、验证方式和失败后的回退策略。
 
-内容待补充...
+### 学习目标
 
-## 实践
+| 层次 | 学完后应该能做到 |
+|---|---|
+| 概念定位 | 解释 单点登录（SSO） 在 身份认证与授权 中解决的真实问题 |
+| 机制理解 | 拆解 单点登录、SSO 与失败路径 |
+| 工程判断 | 为 SAML 选择可验证、可回退的落地方案 |
+| 验证闭环 | 围绕“凭证存在哪里”建立判断标准 |
 
-内容待补充...
+## 知识地图
 
-## 陷阱
+认证回答你是谁，授权回答你能做什么，会话负责在多次请求之间维持可信状态。
 
-内容待补充...
+| 层级 | 本节关注点 | 判断证据 |
+|---|---|---|
+| 问题入口 | 单点登录（SSO）、单点登录、SSO 会在什么业务场景中暴露 | 管理后台、开放平台 |
+| 运行机制 | 凭证存在哪里；如何刷新和撤销；权限变更何时生效 | Set-Cookie 属性、token 过期路径 |
+| 工程约束 | Cookie/Token、刷新策略、SSO 协议、MFA | 兼容性、性能、安全、维护成本和回退方案 |
+| 关联知识 | 与同章和跨章内容形成可追踪链路 | 关系链接、示例代码、测试和线上数据 |
+
+### 延展关系
+
+- 同章延伸：[25.2 OAuth 2.0 / OpenID Connect](/volume-07/chapter-25/25.2-oauth)
+- 同章延伸：[25.4 无密码认证：WebAuthn / Passkeys](/volume-07/chapter-25/25.4-webauthn)
+- 同章延伸：[25.1 会话管理](/volume-07/chapter-25/25.1-session)
+- 交叉参照：[25.2 OAuth 2.0 / OpenID Connect](/volume-07/chapter-25/25.2-oauth)
+- 交叉参照：[25.4 无密码认证：WebAuthn / Passkeys](/volume-07/chapter-25/25.4-webauthn)
+
+## 核心机制
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| 单点登录（SSO） | 认证、授权和会话管理分别处理身份确认、资源权限和跨请求可信状态。 | 覆盖登录、刷新、退出、权限变更、设备丢失和跨站请求路径。 |
+| 单点登录 | 围绕“如何刷新和撤销”拆解概念边界、运行机制和失败路径。 | token 过期路径 |
+| SSO | 围绕“权限变更何时生效”拆解概念边界、运行机制和失败路径。 | 重放测试 |
+| SAML | 围绕“跨站请求如何防护”拆解概念边界、运行机制和失败路径。 | 权限审计日志 |
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+## 工程决策
+
+单点登录（SSO） 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
+
+| 决策维度 | 应该如何判断 | 验证方式 |
+|---|---|---|
+| Cookie/Token | 凭证存储、刷新、撤销、设备绑定和风险校验必须一起设计。 | 覆盖登录、刷新、退出、权限变更、设备丢失和跨站请求路径。 |
+| 刷新策略 | 在“开放平台”场景下判断收益、成本、失败路径和回退策略。 | token 过期路径 |
+| SSO 协议 | 在“多端登录”场景下判断收益、成本、失败路径和回退策略。 | 重放测试 |
+| MFA | 在“高风险操作”场景下判断收益、成本、失败路径和回退策略。 | 权限审计日志 |
+
+## 实战路径
+
+推荐按四步推进：
+
+1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
+2. **建立样例**：用最小代码或配置复现 单点登录（SSO） 的核心行为，不直接在完整业务里猜测。
+3. **接入约束**：把 Cookie/Token、刷新策略、SSO 协议 写进方案，说明不满足时如何降级。
+4. **验证沉淀**：用 Set-Cookie 属性、token 过期路径、重放测试 形成证据，并把结论回写到团队文档。
+
+```ts
+type ChapterDecision = {
+  objective: string
+  constraints: string[]
+  signals: string[]
+  rollback: string
+}
+
+/**
+ * 生成本节主题的落地决策记录。
+ * @param owner 负责验证和维护该方案的角色或小组。
+ * @returns 可写入技术方案或评审记录的决策对象。
+ */
+function createDecisionRecord(owner: string): ChapterDecision {
+  return {
+    objective: "单点登录（SSO）",
+    constraints: ["单点登录（SSO）","单点登录","SSO","SAML"],
+    signals: ["Set-Cookie 属性","token 过期路径","重放测试"],
+    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
+    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
+  }
+}
+
+console.table(createDecisionRecord("frontend"))
+```
+
+## 诊断与验证
+
+| 现象 | 定位动作 | 判断完成的证据 |
+|---|---|---|
+| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
+| 性能或稳定性退化 | 记录基线，再观察 Set-Cookie 属性、token 过期路径、重放测试 | 指标回到预算内，并且关键路径有回归测试 |
+| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+
+## 常见误区
+
+| 误区 | 更可靠的处理方式 |
+|---|---|
+| 把 JWT 当作天然可撤销会话，会让权限变更和退出登录失效。 | 先用最小场景复现，再决定是否升级方案。 |
+| 把 JWT 当作可撤销会话 | 先用最小场景复现，再决定是否升级方案。 |
+| 长期保存敏感令牌 | 先用最小场景复现，再决定是否升级方案。 |
+| 没有处理退出登录和权限变更 | 先用最小场景复现，再决定是否升级方案。 |
+
+## 后续补写清单
+
+为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+
+- 补一张机制图：画清楚 单点登录（SSO）、单点登录、SSO、SAML 之间的数据流、控制流或依赖关系。
+- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
+- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
+- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
+- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+
+## 参考资料
+
+- [https://oauth.net/2/](https://oauth.net/2/)
+- [https://openid.net/developers/specs/](https://openid.net/developers/specs/)
+- [https://www.w3.org/TR/webauthn-3/](https://www.w3.org/TR/webauthn-3/)
+- [https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
+- [https://openid.net/developers/how-connect-works/](https://openid.net/developers/how-connect-works/)

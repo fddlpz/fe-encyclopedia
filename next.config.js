@@ -5,10 +5,7 @@ const withMDX = require("@next/mdx")({
     rehypePlugins: [
       require("rehype-slug"),
       [require("rehype-pretty-code"), {
-        theme: {
-          light: "github-light",
-          dark: "github-dark",
-        },
+        theme: "github-dark",
         keepBackground: false,
       }],
     ],
@@ -22,12 +19,18 @@ const withMDX = require("@next/mdx")({
  * - 当前默认使用项目站点配置，如需修改请调整下方 basePath
  */
 const repoName = "fe-encyclopedia" // 修改为你的仓库名
+const isProduction = process.env.NODE_ENV === "production"
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "export",
-  distDir: "dist",
-  basePath: process.env.NODE_ENV === "production" ? `/${repoName}` : "",
+  // 仅生产构建使用静态导出；开发模式保留 Next 默认资源服务，避免 catch-all 路由吞掉 _next 静态资源。
+  ...(isProduction ? { output: "export" } : {}),
+  // 开发模式使用默认 .next 目录，避免和静态导出的 dist 目录冲突。
+  distDir: isProduction ? "dist" : ".next",
+  basePath: isProduction ? `/${repoName}` : "",
+  env: {
+    NEXT_PUBLIC_BASE_PATH: isProduction ? `/${repoName}` : "",
+  },
   images: {
     unoptimized: true,
   },

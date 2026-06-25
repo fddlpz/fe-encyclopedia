@@ -6,24 +6,121 @@ chapter: "第 2 章 计算机网络协议"
 section: "2.6"
 tags: ["DNS", "域名解析", "CDN", "网络优化"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "2.5 HTTPS/TLS：对称加密与非对称加密、数字证书、TLS 1.2/1.3 握手"
+    slug: "volume-01/chapter-02/2.5-https-tls"
+  - title: "2.7 WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比"
+    slug: "volume-01/chapter-02/2.7-websocket"
+  - title: "2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3"
+    slug: "volume-01/chapter-02/2.4-http-evolution"
+crossRefs:
+  - title: "2.5 HTTPS/TLS：对称加密与非对称加密、数字证书、TLS 1.2/1.3 握手"
+    slug: "volume-01/chapter-02/2.5-https-tls"
+  - title: "2.7 WebSocket 协议：握手过程、帧结构、心跳与重连、与 SSE 的对比"
+    slug: "volume-01/chapter-02/2.7-websocket"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+DNS 把人类可读的域名解析为网络可达的地址或其他记录。浏览器访问一个域名前，通常会先查浏览器缓存、操作系统缓存、递归解析器缓存；缓存未命中时，递归解析器再向根、顶级域、权威 DNS 逐级查询。
+
+```text
+浏览器 / 操作系统
+  -> 递归解析器
+  -> 根服务器：询问 .com 在哪里
+  -> 顶级域服务器：询问 example.com 权威 DNS 在哪里
+  -> 权威 DNS：返回 www.example.com 的记录
+  -> 递归解析器缓存结果并返回给客户端
+```
+
+递归查询是客户端把“帮我查到最终答案”的任务交给递归解析器；迭代查询是解析器按层级逐步询问，每一层返回下一步该问谁。
+
+常见记录类型：
+
+| 类型 | 作用 | 示例场景 |
+|---|---|---|
+| `A` | 域名到 IPv4 地址 | `www.example.com -> 93.184.216.34` |
+| `AAAA` | 域名到 IPv6 地址 | IPv6 访问 |
+| `CNAME` | 域名别名 | 业务域名指向 CDN 域名 |
+| `NS` | 指定权威 DNS | 域名托管 |
+| `MX` | 邮件交换记录 | 邮件投递 |
+| `TXT` | 文本记录 | SPF、DKIM、站点验证 |
+| `CAA` | 限制可签发证书的 CA | 证书治理 |
+
+TTL 决定记录可缓存多久。TTL 不是“全球立即生效时间”，递归解析器和客户端缓存都会影响实际切换速度。
 
 ## 用法
 
-内容待补充...
+前端排查 DNS，通常从“解析到了哪里”和“解析花了多久”开始。
+
+```bash
+# Windows 常用：查看本机解析结果
+nslookup www.example.com
+
+# 如果环境有 dig，可以查看 CNAME 链路和 TTL
+dig www.example.com
+```
+
+在页面里可以使用 DNS 预解析优化确定会访问的第三方域名：
+
+```html
+<!-- 中文注释：提前解析静态资源域名，降低后续请求的 DNS 等待。 -->
+<link rel="dns-prefetch" href="//static.example.com" />
+```
+
+如果后续请求非常关键，并且确定会发生，可以升级为 `preconnect`：
+
+```html
+<!-- 中文注释：提前建立到 API 域名的网络连接，包含 DNS、TCP 和 TLS。 -->
+<link rel="preconnect" href="https://api.example.com" crossorigin />
+```
+
+选择 `dns-prefetch` 还是 `preconnect` 的标准：
+
+| 方式 | 做了什么 | 适用场景 |
+|---|---|---|
+| `dns-prefetch` | 只提前 DNS 解析 | 第三方域名可能会用，成本低 |
+| `preconnect` | 提前 DNS、TCP、TLS | 首屏一定要请求的关键跨域源 |
 
 ## 实践
 
-内容待补充...
+DNS 和 CDN 往往一起工作。一个静态资源域名可能通过 `CNAME` 指向 CDN，CDN 再根据用户位置、运营商、健康状态返回合适的边缘节点。
+
+上线前建议检查：
+
+1. 主域名、静态域名、API 域名是否都有明确负责人。
+2. CNAME 链路是否过长，是否引入不必要的第三方解析。
+3. TTL 是否符合发布策略：频繁切换用短 TTL，稳定资源用较长 TTL。
+4. IPv6 是否配置正确，避免 AAAA 记录存在但服务不可达。
+5. 证书 SAN 是否覆盖最终访问域名，而不是只覆盖 CDN 回源域名。
+6. 监控是否能区分 DNS 失败、连接失败、TLS 失败和 HTTP 失败。
+
+切换 CDN 或迁移域名时，不应只改 DNS 后等待。更稳妥的流程是：
+
+```text
+提前降低 TTL
+  -> 新链路灰度验证
+  -> 同时保持新旧源站可用
+  -> 切换 DNS
+  -> 观察错误率和地区分布
+  -> TTL 恢复到稳定值
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 认为改 DNS 会立即全球生效 | 递归解析器和客户端缓存仍可能持有旧记录 | 迁移前提前降低 TTL |
+| CNAME 链过长 | 增加解析耗时和故障点 | 控制链路层级 |
+| 只检查 A 记录 | IPv6、CAA、MX、TXT 也可能影响业务和证书 | 按业务类型完整检查 |
+| 过度使用 `preconnect` | 占用连接、CPU 和服务端资源 | 只给关键路径使用 |
+| 忽略本地缓存 | 本机测试结果可能不是公网用户结果 | 用多地区探针和线上监控 |
+
+## 参考资料
+
+- [RFC 1034: Domain Names - Concepts and Facilities](https://datatracker.ietf.org/doc/html/rfc1034)
+- [RFC 1035: Domain Names - Implementation and Specification](https://datatracker.ietf.org/doc/html/rfc1035)
+- [RFC 6761: Special-Use Domain Names](https://datatracker.ietf.org/doc/html/rfc6761)

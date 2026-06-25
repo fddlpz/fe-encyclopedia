@@ -6,24 +6,101 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.5"
 tags: ["async", "defer", "preload", "prefetch"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
+    slug: "volume-03/chapter-09/9.4-viewport"
+  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
+    slug: "volume-03/chapter-09/9.6-storage"
+  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
+    slug: "volume-03/chapter-09/9.3-events"
+crossRefs:
+  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
+    slug: "volume-03/chapter-09/9.4-viewport"
+  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
+    slug: "volume-03/chapter-09/9.6-storage"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+经典脚本默认会阻塞 HTML 解析：浏览器必须下载并执行脚本，才能继续解析后续文档。预加载扫描器会在主解析器阻塞时尽量发现后面的资源，但它不能理解所有动态生成的依赖。
+
+| 脚本形式 | 下载 | 执行 | 顺序 |
+|---|---|---|---|
+| 普通脚本 | 阻塞解析 | 下载后立即执行 | 文档顺序 |
+| `defer` | 不阻塞解析 | DOM 解析完成后执行 | 文档顺序 |
+| `async` | 不阻塞解析 | 下载完成后尽快执行 | 不保证顺序 |
+| `type="module"` | 默认延迟执行 | 支持 import 依赖图 | 模块依赖顺序 |
+
+根据 MDN，`defer` 对 module scripts 没有效果，因为模块脚本默认就是延迟执行。
 
 ## 用法
 
-内容待补充...
+应用主脚本使用 defer 或 module：
+
+```html
+<!-- 中文注释：主应用脚本通常依赖 DOM，使用 defer 保证顺序且不阻塞解析。 -->
+<script src="/assets/app.js" defer></script>
+
+<!-- 中文注释：现代应用可使用模块脚本，依赖由浏览器按模块图解析。 -->
+<script type="module" src="/assets/app.mjs"></script>
+```
+
+第三方独立脚本使用 async：
+
+```html
+<!-- 中文注释：统计脚本不应阻塞页面主流程，也不依赖其他脚本顺序。 -->
+<script src="https://analytics.example.com/sdk.js" async></script>
+```
+
+资源提示：
+
+```html
+<link rel="preload" href="/assets/app.css" as="style" />
+<link rel="prefetch" href="/next-page-data.json" as="fetch" crossorigin />
+
+<!-- 中文注释：importmap 必须在依赖它的 module script 前声明。 -->
+<script type="importmap">
+{
+  "imports": {
+    "date-fns": "/vendor/date-fns/index.js"
+  }
+}
+</script>
+```
 
 ## 实践
 
-内容待补充...
+脚本加载策略：
+
+1. 首屏必要脚本：尽量小，使用 defer/module，避免阻塞解析。
+2. 第三方脚本：async、延迟加载、权限隔离和失败兜底。
+3. 路由后续资源：prefetch 只能作为低优先级提示，不保证一定加载。
+4. 关键 CSS/字体：preload 要谨慎，避免抢占主资源。
+
+```ts
+async function loadFeature() {
+  const module = await import("./heavy-feature.js")
+
+  // 中文注释：交互触发后再加载重型能力，减少首屏 JS。
+  module.mount()
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| async 脚本依赖执行顺序 | 有顺序依赖用 defer 或模块依赖 |
+| preload 过多 | 只预加载首屏关键资源 |
+| module 忘记兼容目标 | 结合目标浏览器和构建输出验证 |
+| 第三方脚本阻塞主线程 | 延迟加载、隔离、监控 Long Task |
+| 动态插入脚本缺少错误处理 | 监听 `onerror`，提供降级路径 |
+
+## 参考资料
+
+- [MDN: script element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script)
+- [MDN: import maps](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap)
+- [web.dev: Optimize resource loading](https://web.dev/learn/performance/resource-hints)

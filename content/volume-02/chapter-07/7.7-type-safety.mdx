@@ -5,25 +5,130 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.7"
 tags: ["类型安全", "品牌类型", "类型谓词", "satisfies"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace"
+    slug: "volume-02/chapter-07/7.6-modules"
+  - title: "7.8 TypeScript 编译器 API：tsc 选项、tsconfig.json 全字段解析、AST 遍历、Transformer"
+    slug: "volume-02/chapter-07/7.8-compiler-api"
+  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
+    slug: "volume-02/chapter-07/7.5-declarations"
+crossRefs:
+  - title: "7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace"
+    slug: "volume-02/chapter-07/7.6-modules"
+  - title: "7.8 TypeScript 编译器 API：tsc 选项、tsconfig.json 全字段解析、AST 遍历、Transformer"
+    slug: "volume-02/chapter-07/7.8-compiler-api"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+类型安全实践的目标是让错误更早暴露，同时不让类型系统成为业务开发阻力。常见手段包括品牌类型、类型谓词、穷尽检查、`satisfies` 和更严格的 TSConfig。
+
+| 手段 | 解决的问题 |
+|---|---|
+| 品牌类型 | 区分同为 string/number 但语义不同的值 |
+| 类型谓词 | 把运行时校验结果反馈给编译器 |
+| 穷尽检查 | 防止联合类型新增分支后漏处理 |
+| `satisfies` | 校验结构，同时保留字面量推断 |
+| `noUncheckedIndexedAccess` | 数组和对象索引访问必须处理 undefined |
+
+类型安全的边界必须和运行时校验配合。只靠品牌类型不能证明字符串真的合法，必须在创建品牌值时校验。
 
 ## 用法
 
-内容待补充...
+品牌类型区分业务 ID：
+
+```ts
+type Brand<T, Name extends string> = T & { readonly __brand: Name }
+
+type UserId = Brand<string, "UserId">
+type OrderId = Brand<string, "OrderId">
+
+function createUserId(value: string): UserId {
+  if (!/^user_[a-z0-9]+$/.test(value)) {
+    throw new Error("Invalid user id")
+  }
+
+  // 中文注释：只有校验通过的边界函数可以创建品牌类型。
+  return value as UserId
+}
+```
+
+类型谓词收窄外部数据：
+
+```ts
+type Article = {
+  id: string
+  title: string
+}
+
+function isArticle(value: unknown): value is Article {
+  const record = value as Record<string, unknown>
+  return typeof record?.id === "string" && typeof record.title === "string"
+}
+```
+
+`satisfies` 校验配置：
+
+```ts
+const permissionLabels = {
+  read: "读取",
+  write: "写入",
+  admin: "管理",
+} satisfies Record<string, string>
+
+type Permission = keyof typeof permissionLabels
+```
+
+索引访问显式处理缺失：
+
+```ts
+const users: string[] = []
+const firstUser = users[0]
+
+if (firstUser) {
+  // 中文注释：开启 noUncheckedIndexedAccess 后，firstUser 是 string | undefined。
+  console.log(firstUser.toUpperCase())
+}
+```
 
 ## 实践
 
-内容待补充...
+推荐配置：
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "useUnknownInCatchVariables": true,
+    "noImplicitOverride": true
+  }
+}
+```
+
+安全边界可以分三层：
+
+1. 输入层：JSON、URL、表单、消息通道使用运行时校验。
+2. 领域层：用品牌类型、判别联合和只读类型表达业务不变量。
+3. 输出层：API DTO、日志和埋点类型单独定义，避免泄漏内部模型。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 品牌类型到处 `as` | 只允许边界构造函数断言 |
+| 类型谓词没有真实校验 | 谓词必须检查运行时字段 |
+| `satisfies` 替代不了运行时校验 | 它只在编译期检查源码结构 |
+| 严格选项一次性全开导致阻塞 | 分模块启用，先处理边界和公共 API |
+| catch 变量当 Error 用 | 开启 `useUnknownInCatchVariables` 并收窄 |
+
+## 参考资料
+
+- [TypeScript Handbook: Narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html)
+- [TypeScript TSConfig: noUncheckedIndexedAccess](https://www.typescriptlang.org/tsconfig/#noUncheckedIndexedAccess)
+- [TypeScript TSConfig: exactOptionalPropertyTypes](https://www.typescriptlang.org/tsconfig/#exactOptionalPropertyTypes)

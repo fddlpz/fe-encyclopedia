@@ -6,24 +6,138 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.6"
 tags: ["响应式", "媒体查询", "容器查询", "RWD"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid"
+    slug: "volume-02/chapter-05/5.5-modern-layout"
+  - title: "5.7 文本与字体：@font-face、font-display、可变字体、字体子集化、OpenType"
+    slug: "volume-02/chapter-05/5.7-text-fonts"
+  - title: "5.4 视觉格式化模型：display、position、float、z-index、overflow"
+    slug: "volume-02/chapter-05/5.4-visual-formatting"
+crossRefs:
+  - title: "5.5 现代布局系统：Flexbox、CSS Grid、多列布局、Subgrid"
+    slug: "volume-02/chapter-05/5.5-modern-layout"
+  - title: "5.7 文本与字体：@font-face、font-display、可变字体、字体子集化、OpenType"
+    slug: "volume-02/chapter-05/5.7-text-fonts"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+响应式设计处理的是同一份内容在不同设备、窗口、容器和输入方式下的可用性。媒体查询根据视口或设备特征切换规则，容器查询根据组件所在容器切换规则。现代组件化系统中，容器查询通常比单纯视口断点更贴近真实问题。
+
+| 能力 | 判断依据 | 适合场景 |
+|---|---|---|
+| 媒体查询 | 视口宽度、高度、指针、悬停能力、用户偏好 | 页面级布局、暗色模式、减少动画 |
+| 容器查询 | 父容器尺寸、样式或滚动状态 | 卡片、列表项、侧栏内部组件 |
+| 逻辑属性 | 文档书写方向和文本流 | 国际化、RTL、竖排文本 |
+| CSS 数学函数 | 可用空间和上下限 | 流式字号、宽度、间距 |
+
+媒体查询解决“设备或视口是什么样”，容器查询解决“这个组件现在被放在哪里”。如果一个卡片组件可能出现在主内容、侧栏、弹窗和移动端列表中，就不应该只依赖页面断点。
 
 ## 用法
 
-内容待补充...
+媒体查询适合定义页面级变化：
+
+```css
+.docs-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+@media (width < 768px) {
+  .docs-layout {
+    /* 中文注释：小屏改为单列布局，保留内容顺序 */
+    grid-template-columns: 1fr;
+  }
+}
+```
+
+容器查询需要先声明查询容器：
+
+```css
+.article-card {
+  container-type: inline-size;
+  container-name: article-card;
+}
+
+@container article-card (width >= 420px) {
+  .article-card__body {
+    /* 中文注释：卡片自身空间足够时才切换为图文两列 */
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+```
+
+逻辑属性减少方向耦合：
+
+```css
+.notice {
+  padding-block: 12px;
+  padding-inline: 16px;
+  border-inline-start: 4px solid var(--color-accent);
+}
+```
+
+`clamp()`、`min()` 和 `max()` 用于表达连续约束：
+
+```css
+:root {
+  /* 中文注释：字号会随视口平滑变化，但不会小于 16px 或大于 20px */
+  --font-body: clamp(1rem, 0.92rem + 0.4vw, 1.25rem);
+  --page-gutter: clamp(16px, 4vw, 48px);
+}
+
+.article {
+  font-size: var(--font-body);
+  padding-inline: var(--page-gutter);
+}
+```
 
 ## 实践
 
-内容待补充...
+建立响应式系统时，建议把断点分为三类：
+
+1. 页面断点：控制导航、主栏、侧栏等整体结构。
+2. 组件断点：使用容器查询，让组件按自身宽度变化。
+3. 用户偏好断点：处理 `prefers-color-scheme`、`prefers-reduced-motion`、`forced-colors` 等可访问性需求。
+
+```css
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* 中文注释：尊重用户减少动态效果的系统偏好 */
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
+}
+```
+
+工程上需要把响应式验证纳入常规流程：用浏览器 DevTools 调整容器宽度，检查触摸输入下的命中区域，验证横屏、缩放、长文本、多语言和高对比模式。只看一个手机宽度和一个桌面宽度，通常不足以发现布局问题。
+
+<Callout type="warning" title="不要把断点当设计系统">
+断点只是条件，真正稳定的是内容优先级、容器约束和组件状态。先定义信息层级，再决定在哪些条件下切换布局。
+</Callout>
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只按设备型号写断点 | 按内容是否拥挤、组件是否失衡来设断点 |
+| 全站只用视口媒体查询 | 组件级布局改用容器查询，降低页面上下文耦合 |
+| 忽略文字缩放 | 用 `rem`、`em`、`clamp()`，避免固定高度容器裁切文字 |
+| 只处理宽度 | 同时检查高度、横屏、软键盘、滚动容器和安全区 |
+| 视觉顺序与 DOM 顺序不一致 | 保证键盘焦点、屏幕阅读器和视觉阅读顺序一致 |
+
+## 参考资料
+
+- [MDN: Media queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_media_queries)
+- [MDN: CSS container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Containment/Container_queries)
+- [MDN: @container](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@container)
+- [web.dev: Container queries](https://web.dev/learn/css/container-queries)

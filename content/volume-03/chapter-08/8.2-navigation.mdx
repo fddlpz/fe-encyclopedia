@@ -5,25 +5,114 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 8 章 浏览器架构与渲染引擎"
 section: "8.2"
 tags: ["导航", "DNS", "TCP", "TLS", "渲染"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "8.1 浏览器进程模型：多进程架构、站点隔离、浏览器内核对比"
+    slug: "volume-03/chapter-08/8.1-browser-process"
+  - title: "8.3 渲染管线深入：解析 HTML、样式计算、布局、绘制、合成"
+    slug: "volume-03/chapter-08/8.3-rendering-pipeline"
+  - title: "8.4 光栅化与显示：软件光栅化 vs GPU 光栅化、Skia、VSync"
+    slug: "volume-03/chapter-08/8.4-rasterization"
+crossRefs:
+  - title: "8.1 浏览器进程模型：多进程架构、站点隔离、浏览器内核对比"
+    slug: "volume-03/chapter-08/8.1-browser-process"
+  - title: "8.3 渲染管线深入：解析 HTML、样式计算、布局、绘制、合成"
+    slug: "volume-03/chapter-08/8.3-rendering-pipeline"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+从输入 URL 到页面显示，浏览器会依次完成：URL 解析、缓存和 Service Worker 检查、DNS、连接建立、TLS、HTTP 请求、响应处理、进程选择、解析 HTML、加载关键资源、构建 DOM/CSSOM、布局、绘制和合成。实际顺序会被缓存、预连接、HTTP/2/3、重定向、BFCache 和 Service Worker 改写。
+
+关键路径可以分成三段：
+
+| 阶段 | 关键工作 |
+|---|---|
+| 导航决策 | URL 解析、历史记录、进程选择、权限和安全检查 |
+| 网络获取 | DNS、TCP/QUIC、TLS、缓存、请求响应 |
+| 渲染提交 | 解析 HTML、处理阻塞资源、首屏绘制、交互准备 |
+
+浏览器会尽早流式解析 HTML。遇到阻塞脚本、阻塞样式或同步主线程任务时，首屏就会被推迟。
 
 ## 用法
 
-内容待补充...
+使用 Navigation Timing 定位导航阶段耗时：
+
+```ts
+function readNavigationTiming() {
+  const entry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined
+
+  if (!entry) {
+    return
+  }
+
+  // 中文注释：这些指标帮助区分慢在网络、响应还是 DOM 处理阶段。
+  return {
+    dns: entry.domainLookupEnd - entry.domainLookupStart,
+    tcp: entry.connectEnd - entry.connectStart,
+    request: entry.responseStart - entry.requestStart,
+    response: entry.responseEnd - entry.responseStart,
+    domInteractive: entry.domInteractive,
+    load: entry.loadEventEnd,
+  }
+}
+```
+
+对关键资源使用资源提示：
+
+```html
+<!-- 中文注释：提前建立到关键域名的连接，适合字体、CDN、API 等稳定域名 -->
+<link rel="preconnect" href="https://cdn.example.com" crossorigin />
+
+<!-- 中文注释：只预加载首屏真正需要的关键资源 -->
+<link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin />
+```
+
+脚本加载策略：
+
+```html
+<!-- 中文注释：defer 不阻塞 HTML 解析，按文档顺序在 DOMContentLoaded 前执行 -->
+<script src="/app.js" defer></script>
+
+<!-- 中文注释：async 下载完成后尽快执行，适合互不依赖的第三方脚本 -->
+<script src="/analytics.js" async></script>
+```
 
 ## 实践
 
-内容待补充...
+导航性能优化应按证据排序：
+
+1. 先看 TTFB：慢在服务器、缓存、连接还是重定向。
+2. 再看关键资源：CSS、字体、首屏图、同步脚本是否阻塞首屏。
+3. 再看主线程：hydrate、初始化、第三方脚本是否形成长任务。
+4. 最后看交互：页面可见不等于可操作，INP 和长任务仍需监控。
+
+```ts
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    // 中文注释：资源计时可以暴露慢字体、慢图片和第三方脚本。
+    console.log(entry.name, entry.duration)
+  }
+})
+
+observer.observe({ type: "resource", buffered: true })
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只优化 JS 包体积 | 同时检查 TTFB、CSS、字体、图片和第三方请求 |
+| 滥用 preload | 只预加载首屏关键资源，避免抢占带宽 |
+| async 脚本依赖顺序 | 有依赖的脚本用 defer 或模块化加载 |
+| 忽略 Service Worker | 检查缓存策略和离线回退是否影响导航 |
+| 首屏快但交互慢 | 同时观察 LCP、INP、Long Tasks |
+
+## 参考资料
+
+- [Chrome Developers: Inside look at modern web browser, part 2](https://developer.chrome.com/blog/inside-browser-part2)
+- [web.dev: Understand the critical path](https://web.dev/learn/performance/understanding-the-critical-path)
+- [MDN: PerformanceNavigationTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceNavigationTiming)

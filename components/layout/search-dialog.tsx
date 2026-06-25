@@ -1,24 +1,69 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from "react"
+/**
+ * 文件功能说明：
+ * 渲染全站搜索弹窗，加载静态搜索索引并在客户端执行全文检索。
+ */
+
+import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import { Search, FileText, Tag } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { type SearchResult } from "@/types"
 
+/**
+ * FlexSearch 文档索引实例的最小接口。
+ * 只描述当前搜索弹窗实际使用的 add 和 search 能力，避免和浏览器原生 Document 类型混淆。
+ */
+type ClientSearchIndex = {
+  add: (item: unknown) => void
+  search: (query: string, options: { enrich: true }) => Array<{
+    result: Array<{
+      doc: {
+        title: string
+        slug: string
+        description: string
+        tags?: string[]
+      }
+    }>
+  }>
+}
+
+/**
+ * FlexSearch 文档构造器类型。
+ * @param options FlexSearch 文档索引配置。
+ * @returns 客户端全文搜索索引实例。
+ */
+type FlexSearchDocumentConstructor = new (options: Record<string, unknown>) => ClientSearchIndex
+
+/**
+ * 渲染搜索弹窗并管理搜索索引加载、输入关键字和结果列表。
+ * @returns React 搜索弹窗组件。
+ */
 export function SearchDialog() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
-  const [index, setIndex] = useState<any>(null)
+  const [index, setIndex] = useState<ClientSearchIndex | null>(null)
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || ""
 
   useEffect(() => {
-    fetch("/search-index.json")
+    fetch(`${basePath}/search-index.json`)
       .then((res) => res.json())
       .then((data) => {
-        import("flexsearch").then(({ Document }) => {
-          const doc = new Document({
+        import("flexsearch").then((flexSearchModule) => {
+          const moduleShape = flexSearchModule as unknown as {
+            Document?: FlexSearchDocumentConstructor
+            default?: { Document?: FlexSearchDocumentConstructor }
+          }
+          const SearchDocument = moduleShape.Document ?? moduleShape.default?.Document
+
+          if (typeof SearchDocument !== "function") {
+            return
+          }
+
+          const doc = new SearchDocument({
             document: {
               id: "slug",
               index: ["title", "description", "content", "tags"],
@@ -26,7 +71,9 @@ export function SearchDialog() {
             },
             tokenize: "full",
           })
-          data.forEach((item: any) => doc.add(item))
+
+          // 中文注释：搜索索引数据来自构建期生成的静态 JSON，客户端只负责载入并建立内存索引。
+          data.forEach((item: unknown) => doc.add(item))
           setIndex(doc)
         })
       })
@@ -40,8 +87,8 @@ export function SearchDialog() {
     }
     const found = index.search(query, { enrich: true })
     const map = new Map<string, SearchResult>()
-    found.forEach((field: any) => {
-      field.result.forEach((item: any) => {
+    found.forEach((field) => {
+      field.result.forEach((item) => {
         const doc = item.doc
         if (!map.has(doc.slug)) {
           map.set(doc.slug, {

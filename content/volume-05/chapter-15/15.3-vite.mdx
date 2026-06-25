@@ -5,25 +5,150 @@ volume: "卷五：工程化与架构"
 chapter: "第 15 章 构建工具链"
 section: "15.3"
 tags: ["Vite", "esbuild", "ESM", "Rollup"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "框架重构"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "15.2 Webpack：核心概念、Loader/Plugin、Tree Shaking、Code Splitting、Module Federation"
+    slug: "volume-05/chapter-15/15.2-webpack"
+  - title: "15.4 esbuild / SWC / tsc / Babel：编译器对比、插件开发"
+    slug: "volume-05/chapter-15/15.4-compilers"
+  - title: "15.1 包管理器：npm/yarn/pnpm、SemVer、workspaces"
+    slug: "volume-05/chapter-15/15.1-package-managers"
+crossRefs:
+  - title: "15.2 Webpack：核心概念、Loader/Plugin、Tree Shaking、Code Splitting、Module Federation"
+    slug: "volume-05/chapter-15/15.2-webpack"
+  - title: "15.4 esbuild / SWC / tsc / Babel：编译器对比、插件开发"
+    slug: "volume-05/chapter-15/15.4-compilers"
+lastUpdated: "2026-06-26"
 ---
 
-## 原理
+## 章节定位
 
-内容待补充...
+Vite：ESM 开发服务器、esbuild、Rollup 生产构建 不再只按“是什么、怎么用”展开，而是放回「第 15 章 构建工具链」的知识链路中理解：从依赖解析、模块转换、开发反馈、生产产物和发布流程理解工具链的工程价值。
 
-## 用法
+> **本节要解决的真实问题**：当项目里遇到 Vite、ESM、开发服务器、esbuild 相关设计、选型、接入或排障时，能说清楚边界、取舍、验证方式和失败后的回退策略。
 
-内容待补充...
+### 学习目标
 
-## 实践
+| 层次 | 学完后应该能做到 |
+|---|---|
+| 概念定位 | 解释 Vite 在 构建工具链 中解决的真实问题 |
+| 机制理解 | 拆解 ESM、开发服务器 与失败路径 |
+| 工程判断 | 为 esbuild 选择可验证、可回退的落地方案 |
+| 验证闭环 | 围绕“依赖图是否稳定”建立判断标准 |
 
-内容待补充...
+## 知识地图
 
-## 陷阱
+工具链的目标不是堆工具，而是让构建可复现、反馈足够快、产物可分析、发布可回滚。
 
-内容待补充...
+| 层级 | 本节关注点 | 判断证据 |
+|---|---|---|
+| 问题入口 | Vite、ESM、开发服务器 会在什么业务场景中暴露 | 单页应用、组件库发布 |
+| 运行机制 | 依赖图是否稳定；开发与生产是否一致；产物是否可解释 | lockfile diff、bundle analyzer |
+| 工程约束 | 包管理器、模块格式、代码分割、缓存策略 | 兼容性、性能、安全、维护成本和回退方案 |
+| 关联知识 | 与同章和跨章内容形成可追踪链路 | 关系链接、示例代码、测试和线上数据 |
+
+### 延展关系
+
+- 同章延伸：[15.2 Webpack：核心概念、Loader/Plugin、Tree Shaking、Code Splitting、Module Federation](/volume-05/chapter-15/15.2-webpack)
+- 同章延伸：[15.4 esbuild / SWC / tsc / Babel：编译器对比、插件开发](/volume-05/chapter-15/15.4-compilers)
+- 同章延伸：[15.1 包管理器：npm/yarn/pnpm、SemVer、workspaces](/volume-05/chapter-15/15.1-package-managers)
+- 交叉参照：[15.2 Webpack：核心概念、Loader/Plugin、Tree Shaking、Code Splitting、Module Federation](/volume-05/chapter-15/15.2-webpack)
+- 交叉参照：[15.4 esbuild / SWC / tsc / Babel：编译器对比、插件开发](/volume-05/chapter-15/15.4-compilers)
+
+## 核心机制
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| Vite | 现代构建工具通常把开发期 ESM 服务、快速转译和生产期打包优化拆成不同阶段。 | 用同一业务切片比较 CI 构建时间、产物体积、source map 和兼容目标。 |
+| ESM | 围绕“开发与生产是否一致”拆解概念边界、运行机制和失败路径。 | bundle analyzer |
+| 开发服务器 | 围绕“产物是否可解释”拆解概念边界、运行机制和失败路径。 | 构建缓存命中率 |
+| esbuild | 围绕“发布失败如何回滚”拆解概念边界、运行机制和失败路径。 | CI 时长 |
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+## 工程决策
+
+Vite：ESM 开发服务器、esbuild、Rollup 生产构建 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
+
+| 决策维度 | 应该如何判断 | 验证方式 |
+|---|---|---|
+| 包管理器 | 选型时同时比较冷启动、HMR、生产产物、插件生态和团队迁移成本。 | 用同一业务切片比较 CI 构建时间、产物体积、source map 和兼容目标。 |
+| 模块格式 | 在“组件库发布”场景下判断收益、成本、失败路径和回退策略。 | bundle analyzer |
+| 代码分割 | 在“Monorepo”场景下判断收益、成本、失败路径和回退策略。 | 构建缓存命中率 |
+| 缓存策略 | 在“构建性能治理”场景下判断收益、成本、失败路径和回退策略。 | CI 时长 |
+
+## 实战路径
+
+推荐按四步推进：
+
+1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
+2. **建立样例**：用最小代码或配置复现 Vite 的核心行为，不直接在完整业务里猜测。
+3. **接入约束**：把 包管理器、模块格式、代码分割 写进方案，说明不满足时如何降级。
+4. **验证沉淀**：用 lockfile diff、bundle analyzer、构建缓存命中率 形成证据，并把结论回写到团队文档。
+
+```ts
+type ChapterDecision = {
+  objective: string
+  constraints: string[]
+  signals: string[]
+  rollback: string
+}
+
+/**
+ * 生成本节主题的落地决策记录。
+ * @param owner 负责验证和维护该方案的角色或小组。
+ * @returns 可写入技术方案或评审记录的决策对象。
+ */
+function createDecisionRecord(owner: string): ChapterDecision {
+  return {
+    objective: "ESM 开发服务器、esbuild、Rollup 生产构建",
+    constraints: ["Vite","ESM","开发服务器","esbuild"],
+    signals: ["lockfile diff","bundle analyzer","构建缓存命中率"],
+    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
+    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
+  }
+}
+
+console.table(createDecisionRecord("frontend"))
+```
+
+## 诊断与验证
+
+| 现象 | 定位动作 | 判断完成的证据 |
+|---|---|---|
+| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
+| 性能或稳定性退化 | 记录基线，再观察 lockfile diff、bundle analyzer、构建缓存命中率 | 指标回到预算内，并且关键路径有回归测试 |
+| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+
+## 常见误区
+
+| 误区 | 更可靠的处理方式 |
+|---|---|
+| 开发服务器很快不代表生产构建质量一定更好。 | 先用最小场景复现，再决定是否升级方案。 |
+| 混用包管理器 | 先用最小场景复现，再决定是否升级方案。 |
+| 只看 dev server 速度 | 把问题拆到上下文、边界、证据和回退方案中验证。 |
+| 忽略 ESM/CJS 与 exports 兼容 | 先用最小场景复现，再决定是否升级方案。 |
+
+## 后续补写清单
+
+为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+
+- 补一张机制图：画清楚 Vite、ESM、开发服务器、esbuild 之间的数据流、控制流或依赖关系。
+- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
+- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
+- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
+- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+
+## 参考资料
+
+- [https://docs.npmjs.com/](https://docs.npmjs.com/)
+- [https://pnpm.io/](https://pnpm.io/)
+- [https://webpack.js.org/concepts/](https://webpack.js.org/concepts/)
+- [https://vite.dev/guide/](https://vite.dev/guide/)
+- [https://rollupjs.org/](https://rollupjs.org/)

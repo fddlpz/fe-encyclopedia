@@ -6,10 +6,11 @@ chapter: "第 6 章 JavaScript 语言精要"
 section: "6.13"
 tags: ["可选链", "空值合并", "Decorators", "新语法"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
 related: ["6.1-js-history", "6.2-type-system"]
 crossRefs: []
-lastUpdated: "2026-04-24"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
@@ -74,18 +75,15 @@ feature.enabled &&= user.hasPermission;
 Pipeline Operator `|>` 允许将表达式的结果作为参数传递给下一个函数，改善函数调用的可读性：
 
 ```js
-// 当前（Stage 2）提案语法
-const result = value
-  |>> double
-  |>> add(10)
-  |>> format;
+// 注意：Pipeline Operator 仍在提案中，示例只表达意图，不代表最终标准语法。
+const result = format(add(double(value), 10));
 ```
 
-目前 TC39 对具体语法（Hack-style vs F#-style）仍有争议，尚未进入 Stage 3。生产环境建议使用 `lodash/fp`、`ramda` 等函数式工具库，或简单的中间变量。
+目前 TC39 对具体语法和占位符模型仍有讨论，生产环境不应依赖非标准 Pipeline 语法。可使用清晰的中间变量、函数组合工具，或等待 Babel/TypeScript 与运行时对最终标准的支持。
 
-### Decorators（ES2023/ES2024）
+### Decorators（Stage 3）
 
-Decorators（装饰器）是一种用于修改类和类成员的声明式语法。TC39 的 Decorators 提案经历了多次重大修订，当前 Stage 3 版本（预计 ES2024 纳入）的语法如下：
+Decorators（装饰器）是一种用于修改类和类成员的声明式语法。TC39 的 Decorators 提案经历了多次重大修订，截至 2026 年 6 月仍不是 finished proposal，工程使用时必须明确是 TypeScript legacy decorators、Babel legacy decorators，还是 TC39 Stage 3 decorators。
 
 ```js
 function logged(value, { kind, name }) {
@@ -107,7 +105,13 @@ class Example {
 
 装饰器函数接收被装饰的值和上下文对象（包含 `kind`、`name`、`access`、`static`、`private` 等元数据），可返回新的值替换原值。
 
-Babel 的 `@babel/plugin-proposal-decorators` 和 TypeScript 的 `experimentalDecorators` 实现的是旧版（Legacy）装饰器语法，与最新提案不兼容。新项目应关注标准提案进展。
+Babel 的 `@babel/plugin-proposal-decorators` 可以选择不同版本的装饰器语义；TypeScript 的 `experimentalDecorators` 长期服务于 legacy decorators。新项目应在文档中写明装饰器版本，避免在框架、编译器和运行时之间混用不兼容语义。
+
+### ES2025/ES2026 进展
+
+ES2025 已包含同步 Iterator helpers、Set 集合方法、Import Attributes/JSON Modules、RegExp.escape、RegExp modifiers、重复命名捕获组、Promise.try、Float16Array 等特性。它们多数是 API 或模块能力，不全是新语法，但会显著影响集合处理、正则安全和模块加载方式。
+
+TC39 finished proposals 中还列出了预计 ES2026/ES2027 发布的特性，例如 Array.fromAsync、Error.isError、Uint8Array Base64、JSON.parse source text access、Upsert、Temporal 和 Explicit Resource Management。项目中不要把 Stage 3 或 finished-but-not-yet-shipped 的能力直接当作所有运行时都可用，应通过 Baseline、MDN、Can I Use、Node 版本和目标浏览器矩阵确认。
 
 ## 用法
 
@@ -178,7 +182,14 @@ var street = (_user$address = user === null || user === void 0 ? void 0 : user.a
 | 可选链用于赋值左侧 | 语法错误 | 使用条件判断包裹赋值逻辑 |
 | `obj?.prop` 整体为 undefined 时的运算 | `obj?.prop + 1` 得到 NaN | 配合 `??` 提供默认值：`(obj?.prop ?? 0) + 1` |
 | 装饰器版本不兼容 | Babel Legacy 与 TC39 新提案语法不同 | 明确项目使用的装饰器版本，不混用 |
+| 将 Stage 3 或 finished proposal 当作已全量可用 | 本地或新浏览器可用，旧环境/Node 版本失败 | 通过兼容矩阵、转译配置和运行时检测确认 |
 | `??=` 与 `=` 的语义混淆 | `a ??= b` 仅在 nullish 时赋值，而 `a = b` 总是赋值 | 根据业务意图选择正确的赋值方式 |
+
+## 参考
+
+- [TC39 finished proposals](https://github.com/tc39/proposals/blob/main/finished-proposals.md)
+- [TC39 process document](https://tc39.es/process-document/)
+- [ECMAScript specification draft](https://tc39.es/ecma262/)
 
 ## 测验
 

@@ -6,24 +6,128 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.1"
 tags: ["盒模型", "BFC", "层叠上下文", "CSS基础"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.2 选择器体系：基础选择器、组合器、伪类、伪元素、Specificity、:is/:where/:has"
+    slug: "volume-02/chapter-05/5.2-selectors"
+  - title: "5.3 值与单位：绝对单位、相对单位、color、image、CSS 自定义属性"
+    slug: "volume-02/chapter-05/5.3-values-units"
+crossRefs:
+  - title: "4.8 新兴的 HTML API：Popover API、Dialog 元素、Details 元素动画、Anchor Positioning"
+    slug: "volume-02/chapter-04/4.8-new-html-apis"
+  - title: "5.2 选择器体系：基础选择器、组合器、伪类、伪元素、Specificity、:is/:where/:has"
+    slug: "volume-02/chapter-05/5.2-selectors"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+CSS 布局从盒模型开始。每个元素在视觉格式化时都会生成一个或多个盒子，盒子由 content、padding、border、margin 组成。`box-sizing` 决定声明的 `width` 和 `height` 是否包含 padding 和 border。
+
+```css
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+```
+
+| 模型 | `width` 表示 | 常见用途 |
+|---|---|---|
+| `content-box` | 只包含内容区 | CSS 初始值 |
+| `border-box` | 包含内容、padding、border | 组件和布局更可控 |
+
+BFC（Block Formatting Context）是块级布局的独立格式化环境。它会影响浮动、外边距折叠和包含关系。常见触发方式包括 `display: flow-root`、浮动元素、绝对定位元素、`overflow` 非 `visible`、flex/grid 容器等。
+
+包含块决定百分比尺寸和定位偏移相对于谁计算。绝对定位元素的包含块通常来自最近的非 `static` 定位祖先，也会受 transform、filter、contain 等属性影响。
+
+层叠上下文决定 z 轴绘制顺序。`z-index` 只在对应上下文内部比较，不能跨上下文“打穿”父级。
+
+<Callout type="info" title="调布局先分清模型">
+尺寸异常先查盒模型和包含块；浮动、外边距和清除问题先查 BFC；遮挡问题先查层叠上下文，而不是直接加更大的 z-index。
+</Callout>
 
 ## 用法
 
-内容待补充...
+清除浮动和隔离布局时，优先使用 `flow-root`：
+
+```css
+.media-card {
+  display: flow-root;
+}
+
+.media-card__cover {
+  float: left;
+  margin-inline-end: 16px;
+}
+```
+
+避免 z-index 失控，可以建立明确的层级 token：
+
+```css
+:root {
+  --z-dropdown: 1000;
+  --z-modal: 2000;
+  --z-toast: 3000;
+}
+
+.modal {
+  position: fixed;
+  z-index: var(--z-modal);
+}
+```
+
+定位前先确认包含块：
+
+```css
+.card {
+  position: relative;
+}
+
+.card__badge {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+}
+```
 
 ## 实践
 
-内容待补充...
+排查 CSS 基础模型问题时按顺序做：
+
+1. 在 DevTools 中查看 computed box model，确认尺寸是否包含 padding/border。
+2. 查看父级是否创建了新的格式化上下文或包含块。
+3. 检查 `position`、`transform`、`contain`、`opacity`、`isolation` 是否创建层叠上下文。
+4. 用 `display: flow-root` 替代历史 clearfix。
+5. 用统一 z-index token 管理浮层，而不是组件内随意写数字。
+
+```ts
+type LayerName = "dropdown" | "modal" | "toast"
+
+const zIndex: Record<LayerName, number> = {
+  dropdown: 1000,
+  modal: 2000,
+  toast: 3000,
+}
+
+// 中文注释：集中维护 z-index，避免组件各自声明魔法数字。
+console.table(zIndex)
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| z-index 写到 999999 | 父级层叠上下文限制仍然存在 | 找到上下文边界 |
+| 不区分 margin 和 gap | 外边距折叠和相邻关系难维护 | 布局间距优先用 gap |
+| 用 `overflow: hidden` 清浮动 | 可能裁剪阴影、浮层和 sticky | 优先 `display: flow-root` |
+| 百分比定位错位 | 包含块不是预期元素 | 给目标父级建立定位上下文 |
+| 全局重置破坏第三方组件 | 盒模型、字体和 margin 被意外覆盖 | reset 保持可控范围 |
+
+## 参考资料
+
+- [W3C: CSS Box Model Level 3](https://www.w3.org/TR/css-box-3/)
+- [MDN: The box model](https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics/Box_model)
+- [MDN: Stacking context](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Positioned_layout/Stacking_context)
+- [MDN: Layout and the containing block](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_display/Containing_block)

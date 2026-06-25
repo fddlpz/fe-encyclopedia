@@ -5,25 +5,133 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.2"
 tags: ["interface", "type", "联合类型", "元组"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.1 类型系统基础：静态类型 vs 动态类型、类型推断、类型断言、unknown vs any、never"
+    slug: "volume-02/chapter-07/7.1-ts-basics"
+  - title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
+    slug: "volume-02/chapter-07/7.3-advanced-types"
+  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
+    slug: "volume-02/chapter-07/7.4-type-utils"
+crossRefs:
+  - title: "7.1 类型系统基础：静态类型 vs 动态类型、类型推断、类型断言、unknown vs any、never"
+    slug: "volume-02/chapter-07/7.1-ts-basics"
+  - title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
+    slug: "volume-02/chapter-07/7.3-advanced-types"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+TypeScript 的对象类型是结构化类型：只要形状兼容，就可以赋值，不要求显式继承关系。`interface` 和 `type` 都能描述对象结构，但能力边界不同。
+
+| 主题 | 关键点 | 建议 |
+|---|---|---|
+| `interface` | 可声明合并，可 `extends` | 公共对象模型、类契约、库类型扩展 |
+| `type` | 可表达联合、交叉、条件、元组和映射结果 | 组合类型、函数类型、字面量联合 |
+| 索引签名 | 描述动态 key | 配合 `noUncheckedIndexedAccess` 使用 |
+| 联合类型 | 多种可能之一 | 用判别字段建模状态 |
+| 交叉类型 | 多种结构叠加 | 用于组合能力，避免冲突字段 |
+| 元组 | 固定长度和位置语义的数组 | 适合坐标、返回值、命令参数 |
+
+核心取舍：`interface` 更适合可扩展对象契约，`type` 更适合类型表达式和组合。团队不必强行统一所有场景，但需要形成清晰规则。
 
 ## 用法
 
-内容待补充...
+对象模型优先 `interface`：
+
+```ts
+interface Article {
+  id: string
+  title: string
+  tags: string[]
+}
+
+interface FeaturedArticle extends Article {
+  featuredAt: string
+}
+```
+
+状态模型优先判别联合：
+
+```ts
+type RequestState<T> =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: T }
+  | { status: "error"; error: Error }
+
+function getMessage(state: RequestState<string[]>) {
+  if (state.status === "success") {
+    // 中文注释：判别字段收窄后，data 只在 success 分支可见。
+    return `共 ${state.data.length} 条`
+  }
+
+  return state.status
+}
+```
+
+动态字典要让值类型包含缺失可能：
+
+```ts
+type FeatureFlags = Record<string, boolean | undefined>
+
+const flags: FeatureFlags = {}
+
+if (flags.newEditor === true) {
+  // 中文注释：显式判断 true，避免 undefined 被当作 false 误判业务状态。
+  console.log("启用新编辑器")
+}
+```
+
+元组要保留位置语义：
+
+```ts
+type Point = readonly [x: number, y: number]
+
+function distance([x, y]: Point) {
+  return Math.sqrt(x * x + y * y)
+}
+```
 
 ## 实践
 
-内容待补充...
+类型建模时，先列出业务状态，再决定类型结构。对于表单、请求、权限和流程状态，判别联合通常比多个布尔字段更安全。
+
+```ts
+type Payment =
+  | { kind: "card"; last4: string }
+  | { kind: "wallet"; provider: "alipay" | "wechat" }
+  | { kind: "invoice"; taxId: string }
+
+function paymentLabel(payment: Payment) {
+  switch (payment.kind) {
+    case "card":
+      return `银行卡 ${payment.last4}`
+    case "wallet":
+      return payment.provider
+    case "invoice":
+      return payment.taxId
+  }
+}
+```
+
+API 响应类型不要直接复用 UI 状态类型。接口字段反映后端契约，UI 类型反映页面状态，两者中间可以用 mapper 转换。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 多个布尔字段表达互斥状态 | 改成判别联合 |
+| 滥用交叉类型 | 确认同名字段不会产生不可用的 `never` |
+| 索引签名返回值过宽 | 使用 `Record<K, V>` 或显式 key 联合 |
+| 元组当普通数组传递 | 使用命名元组和 `readonly` 保留语义 |
+| `interface` 和 `type` 随意混用 | 建立团队规则，公共对象 interface，组合表达 type |
+
+## 参考资料
+
+- [TypeScript Handbook: Object Types](https://www.typescriptlang.org/docs/handbook/2/objects.html)
+- [TypeScript Handbook: Unions and Intersection Types](https://www.typescriptlang.org/docs/handbook/unions-and-intersections.html)
+- [TypeScript Handbook: Everyday Types](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html)

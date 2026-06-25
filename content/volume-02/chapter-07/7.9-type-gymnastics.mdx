@@ -5,25 +5,121 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.9"
 tags: ["类型体操", "HKT", "类型驱动开发", "挑战"]
-difficulty: "基础"
+difficulty: "高级"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.8 TypeScript 编译器 API：tsc 选项、tsconfig.json 全字段解析、AST 遍历、Transformer"
+    slug: "volume-02/chapter-07/7.8-compiler-api"
+  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
+    slug: "volume-02/chapter-07/7.7-type-safety"
+crossRefs:
+  - title: "7.8 TypeScript 编译器 API：tsc 选项、tsconfig.json 全字段解析、AST 遍历、Transformer"
+    slug: "volume-02/chapter-07/7.8-compiler-api"
+  - title: "8.1 浏览器进程模型：多进程架构、站点隔离、浏览器内核对比"
+    slug: "volume-03/chapter-08/8.1-browser-process"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+类型体操是用 TypeScript 类型系统进行高阶抽象、推导和约束。它常见于库作者、框架作者、schema 工具、路由工具和复杂组件库。对业务项目来说，类型体操的价值在于把难以测试的约束提前暴露，而不是追求复杂写法。
+
+| 模式 | 适合场景 |
+|---|---|
+| 类型级测试 | 验证公共类型工具的输入输出 |
+| HKT 模拟 | 表达“类型构造器”一类高阶抽象 |
+| 类型驱动开发 | 先建模状态和 API，再实现运行时代码 |
+| 递归推导 | 路由、表单、schema、JSON 路径 |
+
+TypeScript 不原生支持完整 HKT，社区常通过接口占位、类型字典或库封装模拟。是否采用 HKT，取决于它能否显著减少库 API 的重复和误用。
 
 ## 用法
 
-内容待补充...
+类型级测试可以用辅助类型表达：
+
+```ts
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends
+  (<T>() => T extends B ? 1 : 2)
+    ? true
+    : false
+
+type Expect<T extends true> = T
+
+type First<T extends readonly unknown[]> = T extends readonly [infer Head, ...unknown[]]
+  ? Head
+  : never
+
+type Case = Expect<Equal<First<[1, 2, 3]>, 1>>
+```
+
+类型驱动状态机：
+
+```ts
+type Step =
+  | { type: "cart"; items: string[] }
+  | { type: "shipping"; addressId: string }
+  | { type: "payment"; orderId: string }
+  | { type: "done"; receiptId: string }
+
+function nextStep(step: Step): Step {
+  switch (step.type) {
+    case "cart":
+      return { type: "shipping", addressId: "addr_1" }
+    case "shipping":
+      return { type: "payment", orderId: "order_1" }
+    case "payment":
+      return { type: "done", receiptId: "receipt_1" }
+    case "done":
+      return step
+  }
+}
+```
+
+约束路径字符串：
+
+```ts
+type Resource = "users" | "orders"
+type RoutePath = `/api/${Resource}/${string}`
+
+function request(path: RoutePath) {
+  // 中文注释：类型限制只能请求约定资源路径。
+  return fetch(path)
+}
+```
 
 ## 实践
 
-内容待补充...
+类型体操进入项目代码前，需要满足三条标准：
+
+1. 能显著减少真实重复，而不是只减少几行类型。
+2. 错误信息可理解，调用方不需要读源码才能修复。
+3. 编译性能可接受，CI 和编辑器不卡顿。
+
+对公共工具类型，建议配类型级测试；对业务类型，建议优先使用清晰的判别联合和命名类型。
+
+```ts
+type ApiEvent<Name extends string, Payload> = {
+  name: Name
+  payload: Payload
+}
+
+type UserCreated = ApiEvent<"user.created", { id: string }>
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 把类型挑战写进业务代码 | 移到工具层并加类型级测试 |
+| HKT 模拟过度 | 只有库级抽象确有收益时再引入 |
+| 模板字面量类型过宽 | 使用有限联合限制可生成字符串 |
+| 类型递归导致编辑器卡顿 | 限制深度，拆分类型，必要时改代码生成 |
+| 类型驱动忽略运行时 | 类型表达约束，运行时仍要校验外部输入 |
+
+## 参考资料
+
+- [TypeScript Handbook: Conditional Types](https://www.typescriptlang.org/docs/handbook/2/conditional-types.html)
+- [TypeScript Handbook: Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html)
+- [Type Challenges](https://github.com/type-challenges/type-challenges)

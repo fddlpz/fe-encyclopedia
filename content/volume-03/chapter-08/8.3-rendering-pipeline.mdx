@@ -5,25 +5,117 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 8 章 浏览器架构与渲染引擎"
 section: "8.3"
 tags: ["渲染管线", "DOM", "CSSOM", "合成"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "8.2 导航流程：URL 输入到页面显示的全过程"
+    slug: "volume-03/chapter-08/8.2-navigation"
+  - title: "8.4 光栅化与显示：软件光栅化 vs GPU 光栅化、Skia、VSync"
+    slug: "volume-03/chapter-08/8.4-rasterization"
+  - title: "8.1 浏览器进程模型：多进程架构、站点隔离、浏览器内核对比"
+    slug: "volume-03/chapter-08/8.1-browser-process"
+crossRefs:
+  - title: "8.2 导航流程：URL 输入到页面显示的全过程"
+    slug: "volume-03/chapter-08/8.2-navigation"
+  - title: "8.4 光栅化与显示：软件光栅化 vs GPU 光栅化、Skia、VSync"
+    slug: "volume-03/chapter-08/8.4-rasterization"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+渲染管线把 HTML、CSS 和 JS 转成屏幕像素。典型流程是：
+
+1. 解析 HTML，构建 DOM。
+2. 解析 CSS，构建 CSSOM。
+3. 样式计算，得到每个元素的 computed style。
+4. 布局，计算盒子的几何位置和尺寸。
+5. 绘制，把视觉指令记录到 display list 或 paint records。
+6. 光栅化，把绘制指令转成位图。
+7. 合成，把图层组合成最终帧。
+
+并不是每次变化都走完整流程。改 `width` 可能触发布局、绘制、合成；改 `color` 通常跳过布局但需要绘制；改 `transform` 和 `opacity` 在合适条件下可以只走合成。
 
 ## 用法
 
-内容待补充...
+避免布局抖动：不要在循环中交替读写布局。
+
+```ts
+const cards = Array.from(document.querySelectorAll<HTMLElement>(".card"))
+
+// 中文注释：先批量读取布局信息。
+const heights = cards.map((card) => card.offsetHeight)
+const maxHeight = Math.max(...heights)
+
+// 中文注释：再批量写入样式，避免读写交错触发多次同步布局。
+cards.forEach((card) => {
+  card.style.minHeight = `${maxHeight}px`
+})
+```
+
+动画优先使用合成友好属性：
+
+```css
+.toast {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.toast[data-open="true"] {
+  /* 中文注释：opacity 和 transform 更容易避免布局和绘制开销。 */
+  opacity: 1;
+  transform: translateY(0);
+}
+```
+
+定位问题时用 Performance 面板观察事件：
+
+- Recalculate Style：样式计算。
+- Layout：几何计算。
+- Paint：绘制。
+- Composite Layers：图层合成。
+- Long Task：主线程长时间不可响应。
 
 ## 实践
 
-内容待补充...
+渲染优化要围绕用户可感知结果：
+
+1. 首屏：减少阻塞 CSS、阻塞脚本和首屏大图。
+2. 滚动：避免 scroll 事件中同步布局，使用 passive listener 和 IntersectionObserver。
+3. 动画：使用 transform/opacity，限制大面积滤镜和阴影。
+4. 大列表：虚拟滚动或分页，避免一次性布局上万节点。
+
+```ts
+const observer = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("is-visible")
+    }
+  }
+})
+
+document.querySelectorAll(".reveal").forEach((node) => {
+  // 中文注释：用浏览器原生观察器替代滚动回调中的频繁布局读取。
+  observer.observe(node)
+})
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只关注 JS 执行时间 | 同时检查 Style、Layout、Paint 和 Composite |
+| 读写布局交错 | 分离读取和写入，必要时使用 requestAnimationFrame |
+| 大量 DOM 一次性插入 | 使用分片、虚拟列表或 DocumentFragment |
+| 动画 box-shadow/filter | 控制区域和频率，必要时换成图片或伪元素 |
+| 盲目使用 will-change | 只在动画前临时使用，避免占用内存 |
+
+## 参考资料
+
+- [Chrome Developers: Inside look at modern web browser, part 3](https://developer.chrome.com/blog/inside-browser-part3)
+- [MDN: Critical rendering path](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/Critical_rendering_path)
+- [web.dev: Rendering performance](https://web.dev/articles/rendering-performance)

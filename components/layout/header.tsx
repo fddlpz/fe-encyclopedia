@@ -1,12 +1,21 @@
 "use client"
 
+/**
+ * 文件功能说明：
+ * 渲染文档页顶部导航栏，包含站点入口、全站搜索和明暗主题切换。
+ */
+
 import React from "react"
 import Link from "next/link"
-import { BookOpen, Moon, Sun, Menu } from "lucide-react"
+import { BookOpen, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { SearchDialog } from "./search-dialog"
 
+/**
+ * 渲染全站顶部导航。
+ * @returns React 顶部导航组件。
+ */
 export function Header() {
   const { theme, setTheme } = useTheme()
 

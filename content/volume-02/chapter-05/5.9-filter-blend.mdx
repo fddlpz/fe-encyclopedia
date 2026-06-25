@@ -6,24 +6,129 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.9"
 tags: ["滤镜", "混合模式", "CSS特效", "视觉"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.8 变换与动画：transform、transition、@keyframes、FLIP、Web Animations API"
+    slug: "volume-02/chapter-05/5.8-transform-animation"
+  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
+    slug: "volume-02/chapter-05/5.10-css-architecture"
+  - title: "5.7 文本与字体：@font-face、font-display、可变字体、字体子集化、OpenType"
+    slug: "volume-02/chapter-05/5.7-text-fonts"
+crossRefs:
+  - title: "5.8 变换与动画：transform、transition、@keyframes、FLIP、Web Animations API"
+    slug: "volume-02/chapter-05/5.8-transform-animation"
+  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
+    slug: "volume-02/chapter-05/5.10-css-architecture"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+滤镜、混合、遮罩和裁剪都发生在视觉绘制阶段，主要影响元素如何被合成到屏幕上：
+
+| 能力 | 作用对象 | 典型用途 |
+|---|---|---|
+| `filter` | 元素自身及其内容 | 模糊、灰度、亮度、阴影 |
+| `backdrop-filter` | 元素背后的已绘制内容 | 毛玻璃、半透明面板 |
+| `mix-blend-mode` | 元素内容与背景的混合 | 标题叠图、视觉海报 |
+| `mask` | 用透明度或图像控制可见区域 | 渐隐、异形图标、复杂遮罩 |
+| `clip-path` | 用几何路径裁剪可见区域 | 多边形卡片、头像裁切、动效裁剪 |
+
+`filter` 会处理元素本身，`backdrop-filter` 会处理元素背后的内容。根据 MDN，`backdrop-filter` 要可见，元素或其背景必须是透明或半透明的，否则背后内容无法透出。
+
+混合模式依赖层叠上下文和背景内容。为了让混合结果可控，通常需要给父容器设置明确背景，并在必要时使用 `isolation: isolate` 建立独立混合环境。
 
 ## 用法
 
-内容待补充...
+毛玻璃效果：
+
+```css
+.glass-panel {
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid rgb(255 255 255 / 45%);
+  /* 中文注释：backdrop-filter 作用于面板背后的像素 */
+  backdrop-filter: blur(16px) saturate(1.2);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass-panel {
+    /* 中文注释：不支持时提供不透明背景，保证文字可读 */
+    background: rgb(255 255 255 / 96%);
+  }
+}
+```
+
+混合模式应隔离上下文：
+
+```css
+.poster {
+  position: relative;
+  isolation: isolate;
+  background: #111;
+}
+
+.poster__title {
+  color: white;
+  /* 中文注释：只在当前 poster 内与背景混合，避免影响页面其他区域 */
+  mix-blend-mode: difference;
+}
+```
+
+遮罩适合做渐隐：
+
+```css
+.scroll-fade {
+  overflow: auto;
+  /* 中文注释：底部渐隐提示还有更多内容，不改变真实滚动区域 */
+  mask-image: linear-gradient(to bottom, #000 80%, transparent);
+}
+```
+
+裁剪适合几何形状：
+
+```css
+.avatar {
+  inline-size: 96px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  clip-path: circle(50%);
+}
+```
 
 ## 实践
 
-内容待补充...
+视觉特效应该先满足可读性，再考虑表现力。建议遵守三条规则：
+
+1. 文本与背景对比度必须在特效关闭、加载失败和高对比模式下仍可用。
+2. 大面积 blur、drop-shadow 和复杂 mask 会增加绘制成本，应控制范围和动画频率。
+3. 特效不要承担唯一的信息表达，例如“灰度表示禁用”还需要语义状态、禁用属性或文本提示。
+
+复杂背景上叠文字时，可以用半透明背景代替强混合：
+
+```css
+.hero-caption {
+  background: linear-gradient(to top, rgb(0 0 0 / 72%), rgb(0 0 0 / 0%));
+  color: white;
+  padding: 24px;
+}
+```
+
+需要动画时，尽量动画 `opacity`、`transform` 或较小区域的裁剪；避免连续动画大面积 blur。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| `backdrop-filter` 看不到效果 | 检查背景是否透明或半透明 |
+| 混合模式影响页面其他元素 | 给局部容器加背景和 `isolation: isolate` |
+| 滤镜动画卡顿 | 减少区域、降低 blur 半径，避免大面积高频动画 |
+| 裁剪导致焦点样式不可见 | 为可交互元素设计裁剪内可见的 focus 样式 |
+| 特效成为唯一状态提示 | 同步使用语义属性、文字或图标 |
+
+## 参考资料
+
+- [MDN: filter](https://developer.mozilla.org/en-US/docs/Web/CSS/filter)
+- [MDN: backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/backdrop-filter)
+- [MDN: mix-blend-mode](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/mix-blend-mode)
+- [MDN: clip-path](https://developer.mozilla.org/en-US/docs/Web/CSS/clip-path)

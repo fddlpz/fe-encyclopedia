@@ -6,24 +6,118 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.8"
 tags: ["File", "Blob", "ArrayBuffer", "TypedArray"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.7 网络请求 API：XMLHttpRequest、fetch、WebSocket、SSE、Beacon API"
+    slug: "volume-03/chapter-09/9.7-network-api"
+  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
+    slug: "volume-03/chapter-09/9.9-workers"
+  - title: "9.6 存储机制：localStorage、IndexedDB、Cache API、OPFS"
+    slug: "volume-03/chapter-09/9.6-storage"
+crossRefs:
+  - title: "9.7 网络请求 API：XMLHttpRequest、fetch、WebSocket、SSE、Beacon API"
+    slug: "volume-03/chapter-09/9.7-network-api"
+  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
+    slug: "volume-03/chapter-09/9.9-workers"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+浏览器二进制模型围绕 `Blob`、`File`、`ArrayBuffer` 和 TypedArray。`Blob` 是不可变的原始数据块，`File` 继承自 Blob 并带有文件名、修改时间等元信息。`ArrayBuffer` 是原始二进制内存，TypedArray 和 DataView 提供按类型读取的视图。
+
+| 类型 | 适合场景 |
+|---|---|
+| Blob | 文件下载、图片预览、响应体 |
+| File | 用户选择或拖放文件 |
+| ArrayBuffer | 网络二进制、加密、音视频处理 |
+| TypedArray | 数值数组和二进制协议 |
+| DataView | 控制字节序读取 |
+
+大文件处理要避免一次性读入内存，优先使用 stream、切片、Worker 和 OPFS。
 
 ## 用法
 
-内容待补充...
+读取用户文件：
+
+```ts
+async function readTextFile(file: File) {
+  if (!file.type.startsWith("text/")) {
+    throw new Error("只支持文本文件")
+  }
+
+  // 中文注释：File 继承 Blob，可直接使用 text、arrayBuffer、stream 等方法。
+  return file.text()
+}
+```
+
+创建下载：
+
+```ts
+function downloadJson(data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+
+  link.href = url
+  link.download = "data.json"
+  link.click()
+
+  // 中文注释：Object URL 用完要释放，避免占用内存。
+  URL.revokeObjectURL(url)
+}
+```
+
+读取二进制头：
+
+```ts
+async function readPngSignature(file: File) {
+  const buffer = await file.slice(0, 8).arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  // 中文注释：PNG 文件头固定为 8 字节，可用 TypedArray 检查。
+  return Array.from(bytes)
+}
+```
 
 ## 实践
 
-内容待补充...
+拖放上传要处理安全和体验：
+
+```ts
+const dropzone = document.querySelector<HTMLElement>("#dropzone")
+
+dropzone?.addEventListener("dragover", (event) => {
+  event.preventDefault()
+})
+
+dropzone?.addEventListener("drop", async (event) => {
+  event.preventDefault()
+  const files = Array.from(event.dataTransfer?.files ?? [])
+
+  // 中文注释：文件名、类型和大小都来自用户环境，不能直接信任。
+  console.table(files.map((file) => ({ name: file.name, size: file.size, type: file.type })))
+})
+```
+
+大文件上传建议分片、断点续传、哈希校验和服务端合并。浏览器端不要只依赖 MIME type，服务端也必须重新校验文件类型和内容。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 一次性读取大文件 | 使用 slice、stream、Worker 或 OPFS |
+| 不释放 Object URL | `URL.revokeObjectURL()` |
+| 信任 file.type | 服务端重新校验 Magic Number 和内容 |
+| 主线程解析大二进制 | 放到 Worker 中处理 |
+| 忽略字节序 | 多字节协议用 DataView 明确 endian |
+
+## 参考资料
+
+- [W3C File API](https://www.w3.org/TR/FileAPI/)
+- [MDN: Blob](https://developer.mozilla.org/en-US/docs/Web/API/Blob)
+- [MDN: Blob.arrayBuffer](https://developer.mozilla.org/en-US/docs/Web/API/Blob/arrayBuffer)
+- [MDN: File System API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API)

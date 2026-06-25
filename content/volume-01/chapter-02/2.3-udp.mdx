@@ -6,24 +6,111 @@ chapter: "第 2 章 计算机网络协议"
 section: "2.3"
 tags: ["UDP", "WebRTC", "无连接", "实时通信"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
+    slug: "volume-01/chapter-02/2.2-tcp"
+  - title: "2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3"
+    slug: "volume-01/chapter-02/2.4-http-evolution"
+  - title: "2.1 OSI 七层模型与 TCP/IP 四层模型对照"
+    slug: "volume-01/chapter-02/2.1-osi-tcpip"
+crossRefs:
+  - title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
+    slug: "volume-01/chapter-02/2.2-tcp"
+  - title: "2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3"
+    slug: "volume-01/chapter-02/2.4-http-evolution"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+UDP 是无连接的数据报协议。它只提供端口复用、长度、校验和等很薄的一层能力，不保证送达、不保证顺序、不保证去重，也没有内建拥塞控制。正因为它机制少，应用层可以在 UDP 之上设计更适合实时场景的传输策略。
+
+| 对比项 | TCP | UDP |
+|---|---|---|
+| 连接模型 | 面向连接 | 无连接 |
+| 数据模型 | 字节流 | 数据报 |
+| 可靠性 | 协议内置确认、重传、排序 | 由应用层自行决定 |
+| 拥塞控制 | 内置 | 应用层或上层协议负责 |
+| 典型场景 | 页面资源、接口、文件传输 | 音视频、游戏、DNS、QUIC |
+
+UDP 的关键不是“比 TCP 快”，而是“不替应用做可靠传输决策”。实时音视频宁愿丢掉过期帧，也不愿等待重传导致画面越来越晚；DNS 查询通常一问一答，协议开销越小越好；QUIC 则在 UDP 之上重新实现了可靠流、多路复用、拥塞控制和加密。
+
+<Callout type="warning" title="UDP 不是免费性能">
+UDP 没有内建拥塞控制。公网服务如果直接使用 UDP，必须考虑限速、重传策略、放大攻击、防伪造、NAT 穿透和网络公平性。
+</Callout>
 
 ## 用法
 
-内容待补充...
+浏览器中的前端代码不能直接创建任意 UDP socket，但会通过几个高级能力间接使用 UDP。
+
+| 场景 | UDP 如何参与 | 前端关注点 |
+|---|---|---|
+| DNS | 传统 DNS 查询常使用 UDP 53 | 解析耗时、缓存、DoH/DoT 环境差异 |
+| WebRTC | 媒体传输优先尝试 UDP，必要时走 TURN/TCP/TLS 兜底 | ICE 状态、候选地址、丢包率、抖动 |
+| HTTP/3 | QUIC 基于 UDP 承载 HTTP 语义 | CDN 和浏览器支持、回退到 HTTP/2 |
+| 实时游戏 | 自定义状态同步协议 | 延迟、丢包容忍、快照和插值 |
+
+WebRTC 的连接建立通常会经历 ICE 候选收集和连通性检查：
+
+```text
+浏览器收集 host / srflx / relay 候选
+  -> 通过信令服务交换候选
+  -> ICE 检查候选对连通性
+  -> 优先选择可用且代价较低的路径
+  -> SRTP/SCTP 传输媒体或数据
+```
+
+最小的 WebRTC 观测代码通常会记录 ICE 状态和候选变化。
+
+```ts
+const pc = new RTCPeerConnection({
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+})
+
+pc.addEventListener("iceconnectionstatechange", () => {
+  // 中文注释：记录 ICE 状态，定位 UDP 被阻断、TURN 兜底或网络切换问题。
+  console.log("iceConnectionState", pc.iceConnectionState)
+})
+
+pc.addEventListener("icecandidate", (event) => {
+  // 中文注释：candidate 为 null 表示本轮候选收集结束。
+  console.log("candidate", event.candidate?.candidate ?? "complete")
+})
+```
 
 ## 实践
 
-内容待补充...
+实时音视频项目里，UDP 相关问题通常不是“协议是否可用”，而是“链路质量是否足以支撑体验”。
+
+1. 指标上同时看 RTT、丢包率、抖动、码率、帧率和重连次数。
+2. 网络策略上准备 STUN 和 TURN，不能假设所有用户都能直连 UDP。
+3. 媒体策略上做自适应码率，弱网时降分辨率或帧率，而不是盲目重传。
+4. 信令链路和媒体链路分开监控，避免把 WebSocket 信令成功误判为媒体链路成功。
+5. 对企业网络、校园网、海外访问做单独验证，因为 UDP 更容易被防火墙或代理限制。
+
+当产品需求是“服务端持续向浏览器推送文本事件”时，先比较 WebSocket、SSE 和轮询，而不是默认上 UDP 或 WebRTC。
+
+| 需求 | 推荐优先级 |
+|---|---|
+| 单向文本通知、断线自动恢复 | SSE |
+| 双向低频消息、协作状态 | WebSocket |
+| 音视频、低延迟数据通道 | WebRTC |
+| 普通状态刷新 | HTTP 轮询或缓存刷新 |
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 认为 UDP 一定低延迟 | 应用层重传、拥塞、NAT、TURN 中继都可能增加延迟 | 用端到端指标验证 |
+| 忽略包大小 | UDP 数据报过大可能触发 IP 分片，丢一个分片就丢整个数据报 | 控制单包大小，避免依赖分片 |
+| 没有拥塞控制 | 大量 UDP 发送会伤害网络公平性，也可能被运营商或防火墙限制 | 采用成熟协议或实现限速和退避 |
+| 只测办公室网络 | 办公网通常比移动弱网稳定 | 覆盖蜂窝网络、跨地域、企业代理 |
+| 把 WebRTC 失败等同于浏览器 bug | 更多时候是 NAT、防火墙、TURN 配置或候选策略问题 | 记录 ICE 过程和候选类型 |
+
+## 参考资料
+
+- [RFC 768: User Datagram Protocol](https://datatracker.ietf.org/doc/html/rfc768)
+- [RFC 8085: UDP Usage Guidelines](https://datatracker.ietf.org/doc/html/rfc8085)
+- [RFC 9000: QUIC](https://datatracker.ietf.org/doc/html/rfc9000)

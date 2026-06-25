@@ -6,24 +6,131 @@ chapter: "第 3 章 Web 安全基础"
 section: "3.4"
 tags: ["安全头部", "HSTS", "XSS", "点击劫持"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求"
+    slug: "volume-01/chapter-03/3.3-mixed-content"
+  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
+    slug: "volume-01/chapter-03/3.2-csp"
+crossRefs:
+  - title: "3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求"
+    slug: "volume-01/chapter-03/3.3-mixed-content"
+  - title: "4.1 HTML 发展史：HTML 2.0 → XHTML 1.0 → HTML5 → Living Standard（WHATWG）"
+    slug: "volume-02/chapter-04/4.1-html-history"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+安全响应头是服务端向浏览器声明安全策略的入口。它们不会替代应用鉴权和代码安全，但能显著收紧浏览器默认行为，降低 XSS、点击劫持、信息泄露、降级攻击和跨源隔离风险。
+
+| 响应头 | 主要作用 | 常见建议值 |
+|---|---|---|
+| `Strict-Transport-Security` | 强制后续使用 HTTPS | `max-age=31536000; includeSubDomains` |
+| `Content-Security-Policy` | 限制资源加载和脚本执行 | 按页面资源白名单配置 |
+| `X-Frame-Options` | 控制页面是否可被框架嵌入 | `DENY` 或 `SAMEORIGIN` |
+| `X-Content-Type-Options` | 阻止 MIME 嗅探 | `nosniff` |
+| `Referrer-Policy` | 控制 Referer 信息泄露 | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | 限制浏览器强能力 | `camera=(), microphone=(), geolocation=()` |
+| `Cross-Origin-Opener-Policy` | 控制顶层页面浏览上下文隔离 | `same-origin` |
+| `Cross-Origin-Embedder-Policy` | 控制跨源资源嵌入策略 | `require-corp` |
+
+<Callout type="info" title="安全头要按页面类型配置">
+登录、支付、后台管理、公开营销页、第三方嵌入页的安全头不一定完全相同。不要把一份最严格配置直接套到所有页面。
+</Callout>
 
 ## 用法
 
-内容待补充...
+一个偏严格的基础配置示例：
+
+```http
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+Referrer-Policy: strict-origin-when-cross-origin
+Permissions-Policy: camera=(), microphone=(), geolocation=()
+X-Frame-Options: DENY
+Content-Security-Policy: default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+```
+
+几个关键边界：
+
+| 头部 | 边界 |
+|---|---|
+| HSTS | 只在 HTTPS 响应上被浏览器接受；长 `max-age` 和 `includeSubDomains` 回滚成本高 |
+| X-Frame-Options | 只有 `DENY` 和 `SAMEORIGIN` 可靠；`ALLOW-FROM` 已不适合作为现代方案 |
+| CSP `frame-ancestors` | 比 XFO 更灵活，可指定多个允许嵌入源 |
+| X-Content-Type-Options | 对脚本和样式 MIME 错误尤其关键 |
+| Referrer-Policy | 现代浏览器默认趋向 `strict-origin-when-cross-origin`，但生产仍建议显式配置 |
+| Permissions-Policy | 只限制浏览器特性使用，不替代用户授权弹窗 |
+| COOP/COEP | 常用于 cross-origin isolated，启用后会影响第三方资源和弹窗关系 |
+
+Node/Edge 服务中可以集中注入安全头：
+
+```ts
+type HeaderMap = Record<string, string>
+
+export function buildSecurityHeaders(): HeaderMap {
+  // 中文注释：基础安全头适合普通文档页，特殊嵌入页需要单独覆盖 frame 相关策略。
+  return {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  }
+}
+```
 
 ## 实践
 
-内容待补充...
+安全头上线应采用灰度和验证流程。
+
+1. 先在测试环境输出完整响应头，并用浏览器 DevTools、`curl -I` 和安全扫描确认。
+2. 对 CSP、Permissions-Policy、COOP/COEP 先评估兼容性，避免阻断第三方 SDK、支付 iframe、客服组件。
+3. HSTS 先用短 `max-age` 验证，再逐步加长；确认所有子域名 HTTPS 完整后再加 `includeSubDomains`。
+4. 嵌入类业务不要直接 `X-Frame-Options: DENY`，应改用更精确的 CSP `frame-ancestors`。
+5. 安全头变更纳入发布检查，避免某个 Nginx、CDN 或 Serverless 入口漏配。
+
+命令行检查：
+
+```bash
+curl -I https://example.com/
+```
+
+Nginx 示例：
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+add_header Content-Security-Policy "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
+```
+
+如果要启用跨源隔离以使用 `SharedArrayBuffer` 等能力，需要同时考虑 COOP、COEP 和资源侧的 CORS/CORP 配置。
+
+```http
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| HSTS 一步设置多年并包含所有子域 | 子域名证书或 HTTPS 未就绪会造成长期不可访问 | 先短周期灰度 |
+| 只配 X-Frame-Options | 无法表达复杂嵌入白名单 | 现代页面使用 CSP `frame-ancestors` |
+| COEP 打开后第三方资源加载失败 | 跨源资源未提供 CORS 或 CORP 授权 | 先盘点资源并灰度 |
+| Referrer-Policy 过宽 | URL 中的查询参数可能泄露给第三方 | 避免敏感信息进入 URL，并设置保守策略 |
+| 在 CDN 和源站配置不一致 | 不同入口响应头不一致，排查困难 | 统一响应头基线并自动化检测 |
+
+## 参考资料
+
+- [RFC 6797: HTTP Strict Transport Security](https://datatracker.ietf.org/doc/html/rfc6797)
+- [MDN: X-Frame-Options](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options)
+- [MDN: Referrer-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referrer-Policy)
+- [W3C: Permissions Policy](https://www.w3.org/TR/permissions-policy/)
+- [MDN: Cross-Origin-Opener-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cross-Origin-Opener-Policy)
+- [MDN: Cross-Origin-Embedder-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cross-Origin-Embedder-Policy)

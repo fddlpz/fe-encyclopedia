@@ -5,25 +5,151 @@ volume: "卷四：框架与状态管理"
 chapter: "第 11 章 React 原理与生态"
 section: "11.14"
 tags: ["RTL", "Jest", "MSW", "Storybook"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "框架重构"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "11.13 React 表单处理：Formik、React Hook Form、Yup、Zod"
+    slug: "volume-04/chapter-11/11.13-forms"
+  - title: "11.15 React 源码导读"
+    slug: "volume-04/chapter-11/11.15-source-code"
+  - title: "11.12 React 样式方案：CSS Modules、Styled-Components、Emotion、Tailwind CSS"
+    slug: "volume-04/chapter-11/11.12-styling"
+crossRefs:
+  - title: "11.13 React 表单处理：Formik、React Hook Form、Yup、Zod"
+    slug: "volume-04/chapter-11/11.13-forms"
+  - title: "11.15 React 源码导读"
+    slug: "volume-04/chapter-11/11.15-source-code"
+lastUpdated: "2026-06-26"
 ---
 
-## 原理
+## 章节定位
 
-内容待补充...
+React 测试：RTL、Jest/Vitest、MSW、Storybook 不再只按“是什么、怎么用”展开，而是放回「第 11 章 React 原理与生态」的知识链路中理解：把状态变化、渲染调度、副作用和服务端能力放到同一条 UI 交付链路里理解。
 
-## 用法
+> **本节要解决的真实问题**：当项目里遇到 React 测试、React、测试、RTL 相关设计、选型、接入或排障时，能说清楚边界、取舍、验证方式和失败后的回退策略。
 
-内容待补充...
+### 学习目标
 
-## 实践
+| 层次 | 学完后应该能做到 |
+|---|---|
+| 概念定位 | 解释 React 测试 在 React 应用 中解决的真实问题 |
+| 机制理解 | 拆解 React、测试 与失败路径 |
+| 工程判断 | 为 RTL 选择可验证、可回退的落地方案 |
+| 验证闭环 | 围绕“状态属于谁”建立判断标准 |
 
-内容待补充...
+## 知识地图
 
-## 陷阱
+React 的核心不是模板语法，而是状态快照如何经过 render、reconcile、commit 和调度策略变成用户可见的界面。
 
-内容待补充...
+| 层级 | 本节关注点 | 判断证据 |
+|---|---|---|
+| 问题入口 | React 测试、React、测试 会在什么业务场景中暴露 | 高交互表单、SSR/SSG 内容页 |
+| 运行机制 | 状态属于谁；渲染边界在哪里；副作用何时运行 | React DevTools Profiler、hydration warning |
+| 工程约束 | 组件边界、状态来源、渲染时机、缓存与失效 | 兼容性、性能、安全、维护成本和回退方案 |
+| 关联知识 | 与同章和跨章内容形成可追踪链路 | 关系链接、示例代码、测试和线上数据 |
+
+### 延展关系
+
+- 同章延伸：[11.13 React 表单处理：Formik、React Hook Form、Yup、Zod](/volume-04/chapter-11/11.13-forms)
+- 同章延伸：[11.15 React 源码导读](/volume-04/chapter-11/11.15-source-code)
+- 同章延伸：[11.12 React 样式方案：CSS Modules、Styled-Components、Emotion、Tailwind CSS](/volume-04/chapter-11/11.12-styling)
+- 交叉参照：[11.13 React 表单处理：Formik、React Hook Form、Yup、Zod](/volume-04/chapter-11/11.13-forms)
+- 交叉参照：[11.15 React 源码导读](/volume-04/chapter-11/11.15-source-code)
+
+## 核心机制
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| React 测试 | 现代构建工具通常把开发期 ESM 服务、快速转译和生产期打包优化拆成不同阶段。 | 用同一业务切片比较 CI 构建时间、产物体积、source map 和兼容目标。 |
+| React | 测试层级应与风险层级匹配：单元验证逻辑，组件验证交互，E2E 验证关键路径，契约验证协作边界。 | 关注 flaky rate、失败定位速度、覆盖率变化和 CI 总时长。 |
+| 测试 | React 把状态快照映射为组件树，再通过 Fiber 调度、提交阶段和生态库管理复杂 UI。 | 用 Profiler、render 次数、hydration 日志和关键交互耗时验证。 |
+| RTL | 围绕“服务端与客户端如何交接”拆解概念边界、运行机制和失败路径。 | bundle 分析 |
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+## 工程决策
+
+React 测试：RTL、Jest/Vitest、MSW、Storybook 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
+
+| 决策维度 | 应该如何判断 | 验证方式 |
+|---|---|---|
+| 组件边界 | 选型时同时比较冷启动、HMR、生产产物、插件生态和团队迁移成本。 | 用同一业务切片比较 CI 构建时间、产物体积、source map 和兼容目标。 |
+| 状态来源 | 高价值路径优先覆盖，低风险展示逻辑避免用昂贵 E2E 堆砌。 | 关注 flaky rate、失败定位速度、覆盖率变化和 CI 总时长。 |
+| 渲染时机 | 按状态来源划分本地状态、服务端状态、URL 状态和表单状态。 | 用 Profiler、render 次数、hydration 日志和关键交互耗时验证。 |
+| 缓存与失效 | 在“跨页面状态共享”场景下判断收益、成本、失败路径和回退策略。 | bundle 分析 |
+
+## 实战路径
+
+推荐按四步推进：
+
+1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
+2. **建立样例**：用最小代码或配置复现 React 测试 的核心行为，不直接在完整业务里猜测。
+3. **接入约束**：把 组件边界、状态来源、渲染时机 写进方案，说明不满足时如何降级。
+4. **验证沉淀**：用 React DevTools Profiler、hydration warning、render 次数 形成证据，并把结论回写到团队文档。
+
+```ts
+type ChapterDecision = {
+  objective: string
+  constraints: string[]
+  signals: string[]
+  rollback: string
+}
+
+/**
+ * 生成本节主题的落地决策记录。
+ * @param owner 负责验证和维护该方案的角色或小组。
+ * @returns 可写入技术方案或评审记录的决策对象。
+ */
+function createDecisionRecord(owner: string): ChapterDecision {
+  return {
+    objective: "RTL、Jest/Vitest、MSW、Storybook",
+    constraints: ["React 测试","React","测试","RTL"],
+    signals: ["React DevTools Profiler","hydration warning","render 次数"],
+    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
+    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
+  }
+}
+
+console.table(createDecisionRecord("frontend"))
+```
+
+## 诊断与验证
+
+| 现象 | 定位动作 | 判断完成的证据 |
+|---|---|---|
+| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
+| 性能或稳定性退化 | 记录基线，再观察 React DevTools Profiler、hydration warning、render 次数 | 指标回到预算内，并且关键路径有回归测试 |
+| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+
+## 常见误区
+
+| 误区 | 更可靠的处理方式 |
+|---|---|
+| 开发服务器很快不代表生产构建质量一定更好。 | 先用最小场景复现，再决定是否升级方案。 |
+| 只看覆盖率数字会掩盖断言质量和关键路径缺口。 | 把问题拆到上下文、边界、证据和回退方案中验证。 |
+| 把服务端数据、表单状态和 UI 临时状态混进同一个全局 store。 | 先用最小场景复现，再决定是否升级方案。 |
+| 把所有数据塞进全局状态 | 先用最小场景复现，再决定是否升级方案。 |
+| 在 render 阶段执行副作用 | 先用最小场景复现，再决定是否升级方案。 |
+
+## 后续补写清单
+
+为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+
+- 补一张机制图：画清楚 React 测试、React、测试、RTL 之间的数据流、控制流或依赖关系。
+- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
+- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
+- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
+- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+
+## 参考资料
+
+- [https://react.dev/learn](https://react.dev/learn)
+- [https://react.dev/reference/react](https://react.dev/reference/react)
+- [https://react.dev/blog/2024/12/05/react-19](https://react.dev/blog/2024/12/05/react-19)
+- [https://react.dev/blog/2024/04/25/react-19-upgrade-guide](https://react.dev/blog/2024/04/25/react-19-upgrade-guide)
+- [https://nextjs.org/docs](https://nextjs.org/docs)

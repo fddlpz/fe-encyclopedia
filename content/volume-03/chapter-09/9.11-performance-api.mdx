@@ -6,24 +6,101 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.11"
 tags: ["Performance API", "PerformanceObserver", "Web Vitals"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
+    slug: "volume-03/chapter-09/9.10-media-api"
+  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
+    slug: "volume-03/chapter-09/9.12-security-api"
+  - title: "9.9 Workers：Web Worker、Service Worker、Worklet"
+    slug: "volume-03/chapter-09/9.9-workers"
+crossRefs:
+  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
+    slug: "volume-03/chapter-09/9.10-media-api"
+  - title: "9.12 安全相关 API：Credential Management、WebAuthn、Trusted Types、Permissions API"
+    slug: "volume-03/chapter-09/9.12-security-api"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+Performance Timeline 是浏览器暴露性能条目的统一时间轴。PerformanceObserver 允许页面实时订阅导航、资源、绘制、布局偏移、长任务等事件。它是 RUM（真实用户监控）的基础。
+
+| Entry 类型 | 用途 |
+|---|---|
+| `navigation` | HTML 文档导航耗时 |
+| `resource` | CSS、JS、图片、fetch 等资源耗时 |
+| `paint` | FP、FCP |
+| `largest-contentful-paint` | LCP |
+| `layout-shift` | CLS |
+| `event` | 交互事件耗时 |
+| `longtask` | 主线程 50ms 以上任务 |
+
+Scheduler API 仍需按兼容性渐进使用。即使没有 Scheduler，也可以用 `requestIdleCallback`、`requestAnimationFrame` 和任务切分降低阻塞。
 
 ## 用法
 
-内容待补充...
+订阅资源耗时：
+
+```ts
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntriesByType("resource")) {
+    const resource = entry as PerformanceResourceTiming
+
+    // 中文注释：跨源资源需要 Timing-Allow-Origin 才能看到完整细节。
+    console.log(resource.name, resource.duration)
+  }
+})
+
+observer.observe({ type: "resource", buffered: true })
+```
+
+监听长任务：
+
+```ts
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    // 中文注释：长任务超过 50ms，通常会影响输入响应。
+    console.warn("long task", entry.duration)
+  }
+}).observe({ type: "longtask", buffered: true })
+```
+
+自定义标记：
+
+```ts
+performance.mark("article-render-start")
+
+// 中文注释：业务渲染完成后记录可观测的自定义耗时。
+performance.mark("article-render-end")
+performance.measure("article-render", "article-render-start", "article-render-end")
+```
 
 ## 实践
 
-内容待补充...
+生产监控建议：
+
+1. 核心 Web Vitals：LCP、CLS、INP。
+2. 导航和资源：TTFB、关键 CSS/JS/图片耗时。
+3. 主线程：Long Tasks、hydration、第三方脚本。
+4. 业务指标：首个可用按钮、列表可交互、编辑器 ready。
+
+上报要采样、去重、脱敏，并通过 `sendBeacon` 或 `fetch(..., { keepalive: true })` 在页面隐藏时发送。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只用实验室 Lighthouse | 同时采集真实用户 RUM |
+| 跨源资源 timing 不完整 | 服务端设置 `Timing-Allow-Origin` |
+| 指标无上下文 | 关联设备、网络、页面、版本和实验分组 |
+| 上报影响性能 | 采样、批量、低优先级发送 |
+| 自定义指标没有定义 | 明确开始/结束点和业务含义 |
+
+## 参考资料
+
+- [MDN: PerformanceObserver](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceObserver)
+- [MDN: PerformanceResourceTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming)
+- [MDN: PerformanceLongTaskTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceLongTaskTiming)
+- [web.dev: Navigation and Resource Timing](https://web.dev/articles/navigation-and-resource-timing)

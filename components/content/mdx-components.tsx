@@ -1,5 +1,9 @@
+/**
+ * 文件功能说明：
+ * 定义 MDX 正文渲染时使用的自定义组件映射和基础排版样式。
+ */
+
 import React from "react"
-import Image from "next/image"
 import { cn } from "@/lib/utils"
 import { Callout } from "./callout"
 import { SectionCard } from "./section-card"

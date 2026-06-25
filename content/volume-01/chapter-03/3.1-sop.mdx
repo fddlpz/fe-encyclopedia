@@ -6,24 +6,150 @@ chapter: "第 3 章 Web 安全基础"
 section: "3.1"
 tags: ["同源策略", "SOP", "CORS", "安全"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
+    slug: "volume-01/chapter-03/3.2-csp"
+  - title: "3.3 混合内容（Mixed Content）：主动与被动混合内容、升级不安全请求"
+    slug: "volume-01/chapter-03/3.3-mixed-content"
+crossRefs:
+  - title: "2.8 其他协议：IP 协议（IPv4/IPv6）、ICMP、ARP、DHCP、SMTP/POP3/IMAP"
+    slug: "volume-01/chapter-02/2.8-other-protocols"
+  - title: "3.2 内容安全策略（CSP）：指令集、report-uri、nonce / hash、CSP Level 3"
+    slug: "volume-01/chapter-03/3.2-csp"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+同源策略（Same-Origin Policy, SOP）是浏览器安全模型的基础。它限制一个源中的脚本读取或操作另一个源中的敏感数据，避免恶意站点直接读取用户已登录站点的页面内容、接口响应或 DOM 状态。
+
+一个源由三元组确定：
+
+```text
+源 = scheme + host + port
+```
+
+| URL | 与 `https://app.example.com:443/account` 是否同源 | 原因 |
+|---|---:|---|
+| `https://app.example.com/profile` | 是 | scheme、host、默认 443 端口一致 |
+| `http://app.example.com/account` | 否 | scheme 不同 |
+| `https://api.example.com/account` | 否 | host 不同 |
+| `https://app.example.com:8443/account` | 否 | port 不同 |
+| `https://app.example.com/settings` | 是 | path 不参与源判断 |
+
+SOP 的重点是“限制读取”，不是“禁止所有跨源请求”。浏览器允许页面发起跨源图片、脚本、表单提交等请求，但会限制脚本读取某些响应内容或访问跨源窗口 DOM。CORS 是在 SOP 之上由服务端显式授权跨源读取的机制。
+
+<Callout type="info" title="SOP 不是权限系统">
+同源策略保护的是浏览器端读取边界。服务端仍必须做身份认证、权限校验、CSRF 防护和业务校验，不能把“浏览器会拦截”当作后端安全边界。
+</Callout>
 
 ## 用法
 
-内容待补充...
+前端最常遇到的 SOP 问题是接口跨域。浏览器会先看请求是否属于 CORS 场景，再根据请求方法、请求头和 `Content-Type` 判断是否需要预检。
+
+```text
+页面源：https://app.example.com
+接口源：https://api.example.com
+
+fetch("https://api.example.com/user")
+  -> 跨源请求
+  -> 服务端必须返回允许读取的 CORS 响应头
+```
+
+常见 CORS 响应头：
+
+```http
+Access-Control-Allow-Origin: https://app.example.com
+Access-Control-Allow-Credentials: true
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization
+Vary: Origin
+```
+
+如果携带 Cookie 或 HTTP 认证信息，不能使用 `Access-Control-Allow-Origin: *`。服务端应根据可信白名单回显具体 Origin，并设置 `Vary: Origin`，避免缓存把一个站点的 CORS 授权响应错误复用给另一个站点。
+
+```ts
+const allowedOrigins = new Set([
+  "https://app.example.com",
+  "https://admin.example.com",
+])
+
+export function buildCorsHeaders(origin: string | null) {
+  // 中文注释：只对明确可信的 Origin 回显 CORS 头，避免把接口开放给任意站点读取。
+  if (!origin || !allowedOrigins.has(origin)) {
+    return {}
+  }
+
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
+    "Vary": "Origin",
+  }
+}
+```
+
+浏览器沙箱还体现在 `iframe` 上。默认情况下，跨源 iframe 不能被父页面随意读取 DOM；如果使用 `sandbox` 属性，浏览器会进一步收紧脚本、表单、弹窗、同源身份等能力。
+
+```html
+<!-- 限制第三方页面能力，只按实际需要逐项放开。 -->
+<iframe
+  src="https://partner.example.com/widget"
+  sandbox="allow-scripts allow-forms"
+></iframe>
+```
 
 ## 实践
 
-内容待补充...
+设计前后端分离域名时，先画清楚信任边界。
+
+| 资源 | 建议域名 | 安全重点 |
+|---|---|---|
+| 用户前台 | `https://app.example.com` | 登录态、CSP、Cookie SameSite |
+| 管理后台 | `https://admin.example.com` | 更严格的权限和安全头 |
+| API | `https://api.example.com` | CORS 白名单、鉴权、CSRF |
+| 静态资源 | `https://static.example.com` | 缓存、SRI、CSP 资源源 |
+| 第三方嵌入页 | 独立域名 | iframe sandbox、postMessage 校验 |
+
+跨窗口通信应使用 `postMessage`，并严格校验 `origin` 和消息结构。
+
+```ts
+type PaymentMessage = {
+  type: "payment:success"
+  orderId: string
+}
+
+window.addEventListener("message", (event) => {
+  // 中文注释：跨窗口消息必须校验来源，不能只校验消息字段。
+  if (event.origin !== "https://pay.example.com") return
+
+  const data = event.data as Partial<PaymentMessage>
+  if (data.type === "payment:success" && typeof data.orderId === "string") {
+    console.log("支付成功", data.orderId)
+  }
+})
+```
+
+Cookie 策略也要和 SOP 一起设计。跨站请求是否携带 Cookie 主要受 `SameSite`、`Secure`、请求方式和浏览器策略影响，而不是 SOP 单独决定。
+
+```http
+Set-Cookie: sid=...; Path=/; HttpOnly; Secure; SameSite=Lax
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 把 CORS 当成服务端鉴权 | 其他客户端不受浏览器 CORS 限制 | 服务端必须验证登录态、权限和业务规则 |
+| `Access-Control-Allow-Origin: *` 配合凭证 | 浏览器会拒绝，且暴露配置意图错误 | 凭证请求回显明确可信 Origin |
+| 忽略 `Vary: Origin` | CDN 或代理缓存可能污染 CORS 响应 | 动态 Origin 场景必须设置 |
+| 只校验 `postMessage` 消息内容 | 恶意来源可伪造结构相同消息 | 同时校验 `event.origin` 和 schema |
+| 使用 `document.domain` 放宽同源 | 该能力已不推荐，且会削弱隔离 | 使用明确的 API、CORS 或消息通信 |
+
+## 参考资料
+
+- [WHATWG HTML: Origins](https://html.spec.whatwg.org/multipage/browsers.html#origins)
+- [MDN: Same-origin policy](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Same-origin_policy)
+- [W3C: Cross-Origin Resource Sharing](https://www.w3.org/TR/2014/REC-cors-20140116/)
+- [Fetch Standard](https://fetch.spec.whatwg.org/)

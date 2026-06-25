@@ -5,25 +5,119 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 10 章 运行时深入"
 section: "10.5"
 tags: ["Deno", "Bun", "Zig", "JavaScriptCore"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "10.4 Node.js 运行时：libuv 架构、事件循环阶段、CommonJS、ES Module"
+    slug: "volume-03/chapter-10/10.4-nodejs"
+  - title: "10.3 内存模型与垃圾回收：标记-清除-整理、分代回收、WeakMap/WeakRef"
+    slug: "volume-03/chapter-10/10.3-memory-model"
+crossRefs:
+  - title: "10.4 Node.js 运行时：libuv 架构、事件循环阶段、CommonJS、ES Module"
+    slug: "volume-03/chapter-10/10.4-nodejs"
+  - title: "10a.1 浏览器路由与历史管理"
+    slug: "volume-03/chapter-10a/10a-router-history"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+Deno 和 Bun 都是在 Node.js 生态成熟之后出现的现代 JavaScript 运行时。它们不是简单“替代 Node”，而是围绕不同工程目标重新组织运行时、工具链和包生态。
+
+Deno 强调安全默认值、Web 标准 API、内置 TypeScript/JSX 转译、统一工具链和 Node/npm 兼容。默认情况下，脚本没有文件系统、网络和环境变量等权限，需要通过 `--allow-*` 明确授权。Deno 2 之后对 Node 和 npm 兼容性持续增强，迁移 Node 项目比早期现实得多，但原生 addon、依赖布局假设和少数 Node API 仍然需要验证。
+
+Bun 强调一体化和速度：运行时、包管理器、测试 runner、bundler 和脚本执行都由 `bun` 提供。Bun 使用 JavaScriptCore，由 Zig 实现大量基础设施，目标是成为 Node.js 的高兼容替代，同时提供更快启动、安装和常见开发体验。实际选型时仍要验证依赖兼容性、生产观测、部署平台和团队熟悉度。
+
+三者的核心差异可以先这样理解：
+
+| 维度 | Node.js | Deno | Bun |
+|---|---|---|---|
+| 引擎 | V8 | V8 | JavaScriptCore |
+| 默认权限 | 进程拥有环境权限 | 默认受限，显式授权 | 接近 Node 习惯 |
+| TypeScript | 依赖转译链路或内置有限能力 | 一等支持转译和类型工具链 | TS/JSX 开箱执行 |
+| 工具链 | npm 生态组合 | formatter、lint、test、task 等内置 | install、test、bundle、run 一体化 |
+| 迁移重点 | 生态最大 | 权限、Node 兼容、部署模型 | Node 兼容、原生依赖、生产稳定性 |
 
 ## 用法
 
-内容待补充...
+Deno 示例：
+
+```ts
+// main.ts
+import { serve } from "https://deno.land/std/http/server.ts"
+
+/**
+ * 处理 HTTP 请求。
+ * @param request 浏览器或客户端发来的请求对象。
+ * @returns 标准 Response 对象。
+ */
+function handleRequest(request: Request): Response {
+  // 中文注释：Deno 使用 Web 标准 Request/Response 模型。
+  return Response.json({ path: new URL(request.url).pathname })
+}
+
+serve(handleRequest)
+```
+
+运行时显式授权网络权限：
+
+```bash
+deno run --allow-net main.ts
+```
+
+Bun 示例：
+
+```ts
+// server.ts
+/**
+ * Bun HTTP 服务入口。
+ * @returns Bun 运行时消费的服务配置对象。
+ */
+export default {
+  port: 3000,
+  fetch(request: Request): Response {
+    // 中文注释：Bun 也支持 Web 标准 Request/Response 风格。
+    return Response.json({ url: request.url })
+  },
+}
+```
+
+运行：
+
+```bash
+bun run server.ts
+```
+
+Deno 与 Bun 都能降低小工具和新项目的启动成本，但对大型存量项目，应该先列出依赖清单并做兼容矩阵：Node 内置模块、npm 包、native addon、postinstall 脚本、测试框架、构建插件、部署镜像和 APM SDK 都要逐项验证。
 
 ## 实践
 
-内容待补充...
+选型建议：
+
+| 场景 | 建议 |
+|---|---|
+| 大型 Node 存量服务 | 默认保留 Node，先在工具链或边缘任务中试点 Deno/Bun |
+| 内部脚本和自动化工具 | Deno 适合权限清晰、单文件脚本；Bun 适合快速执行 npm 生态脚本 |
+| 新 BFF 或轻量 API | 三者都可选，重点比较部署平台、观测和团队经验 |
+| 包管理与本地开发提速 | Bun 可作为包管理器/脚本执行器试点，但要锁定版本并验证 lockfile 流程 |
+| 安全敏感脚本 | Deno 的权限模型更容易把能力边界写入命令行和文档 |
+
+迁移策略应从低风险入口开始：先迁移 lint/test/脚本，再迁移无状态服务，最后才考虑核心长生命周期服务。生产环境要观察冷启动、RSS、CPU、错误堆栈、source map、日志格式、健康检查和 graceful shutdown。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 只看 benchmark 选运行时 | 启动速度和单项测试不能代表依赖兼容、排障成本和生产稳定性。 |
+| 忽略权限差异 | Deno 默认权限受限，脚本部署命令必须显式记录授权范围。 |
+| 假设所有 npm 包都完全兼容 | native addon、postinstall、文件布局和 Node 内置 API 都需要验证。 |
+| lockfile 与 CI 策略不统一 | 不同包管理器产生不同锁文件和安装语义，应明确单一流程。 |
+| 生产观测缺失 | APM、日志、source map 和错误堆栈格式必须先接入再上线。 |
+
+## 参考
+
+- [Deno Docs: Node and npm compatibility](https://docs.deno.com/runtime/fundamentals/node/)
+- [Deno: Runtime overview](https://deno.com/)
+- [Bun Docs: Welcome to Bun](https://bun.com/docs)
+- [Bun: Runtime overview](https://bun.com/)

@@ -6,24 +6,126 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.3"
 tags: ["事件", "事件委托", "passive", "事件循环"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.2 DOM 操作 API：createElement、insertBefore、现代方法、dataset"
+    slug: "volume-03/chapter-09/9.2-dom-api"
+  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
+    slug: "volume-03/chapter-09/9.4-viewport"
+  - title: "9.1 DOM 标准与树结构：节点类型、节点关系与遍历、Live Collection 陷阱"
+    slug: "volume-03/chapter-09/9.1-dom-standard"
+crossRefs:
+  - title: "9.2 DOM 操作 API：createElement、insertBefore、现代方法、dataset"
+    slug: "volume-03/chapter-09/9.2-dom-api"
+  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
+    slug: "volume-03/chapter-09/9.4-viewport"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+DOM 事件从捕获阶段进入目标，再从目标冒泡回祖先。`event.target` 是事件实际起点，`event.currentTarget` 是当前监听器绑定的元素。Shadow DOM 中还要关注 `composed` 和 `composedPath()`。
+
+`addEventListener` 的选项很关键：
+
+| 选项 | 作用 |
+|---|---|
+| `capture` | 在捕获阶段触发 |
+| `once` | 触发一次后自动移除 |
+| `passive` | 承诺不调用 `preventDefault()`，改善滚动性能 |
+| `signal` | 通过 AbortController 统一移除监听器 |
+
+事件回调运行在主线程。回调过重会影响输入响应和渲染，特别是滚动、触摸和指针移动。
 
 ## 用法
 
-内容待补充...
+事件委托：
+
+```ts
+const list = document.querySelector("#todo-list")
+
+list?.addEventListener("click", (event) => {
+  const target = event.target
+
+  if (!(target instanceof Element)) {
+    return
+  }
+
+  const button = target.closest<HTMLButtonElement>("[data-action='remove']")
+  if (!button) {
+    return
+  }
+
+  // 中文注释：委托到列表容器，新增列表项不需要单独绑定事件。
+  button.closest("li")?.remove()
+})
+```
+
+用 AbortController 管理生命周期：
+
+```ts
+const controller = new AbortController()
+
+window.addEventListener(
+  "resize",
+  () => {
+    console.log(window.innerWidth)
+  },
+  { signal: controller.signal },
+)
+
+// 中文注释：组件卸载或页面切换时，一次性移除相关监听器。
+controller.abort()
+```
+
+滚动监听使用 passive：
+
+```ts
+window.addEventListener(
+  "touchmove",
+  () => {
+    // 中文注释：passive 监听器中不能阻止默认滚动行为。
+  },
+  { passive: true },
+)
+```
 
 ## 实践
 
-内容待补充...
+事件设计要避免“监听器越绑越多”。列表、表格、菜单适合委托；一次性确认、动画完成适合 `once`；组件生命周期适合 `signal`；滚动输入适合 `passive`。
+
+如果需要在事件后更新布局，使用 `requestAnimationFrame` 合并视觉更新：
+
+```ts
+let scheduled = false
+
+window.addEventListener("scroll", () => {
+  if (scheduled) {
+    return
+  }
+
+  scheduled = true
+  requestAnimationFrame(() => {
+    scheduled = false
+    // 中文注释：在帧回调里统一读取滚动状态和更新 UI。
+    document.documentElement.dataset.scrolled = String(window.scrollY > 0)
+  })
+}, { passive: true })
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| `target` 当成绑定元素 | 使用 `currentTarget` 或 `closest()` |
+| 忘记移除监听器 | 使用 `AbortController` 或框架卸载钩子 |
+| 滚动事件中重型计算 | 使用 passive、节流、IntersectionObserver |
+| 滥用 `stopPropagation` | 只在明确隔离组件边界时使用 |
+| Shadow DOM 事件路径误判 | 使用 `composedPath()` 分析真实路径 |
+
+## 参考资料
+
+- [MDN: EventTarget.addEventListener](https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener)
+- [WHATWG DOM Standard: Events](https://dom.spec.whatwg.org/#events)
+- [MDN: Event.composedPath](https://developer.mozilla.org/en-US/docs/Web/API/Event/composedPath)

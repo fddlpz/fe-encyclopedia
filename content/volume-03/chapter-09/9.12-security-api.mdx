@@ -6,24 +6,104 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.12"
 tags: ["WebAuthn", "Trusted Types", "Passkeys", "权限"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
+    slug: "volume-03/chapter-09/9.11-performance-api"
+  - title: "9.13 新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒"
+    slug: "volume-03/chapter-09/9.13-new-web-apis"
+  - title: "9.10 多媒体 API：Canvas 2D、WebGL/WebGPU、Web Audio、getUserMedia、WebRTC"
+    slug: "volume-03/chapter-09/9.10-media-api"
+crossRefs:
+  - title: "9.11 性能与观测 API：Performance Timeline、PerformanceObserver、Scheduler API"
+    slug: "volume-03/chapter-09/9.11-performance-api"
+  - title: "9.13 新兴 Web API：Popover API、View Transitions API、Anchor Positioning API、隐私沙盒"
+    slug: "volume-03/chapter-09/9.13-new-web-apis"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+安全相关 Web API 不是替代服务端安全，而是把浏览器能力纳入安全架构：
+
+| API | 作用 |
+|---|---|
+| Credential Management | 管理凭据获取和保存流程 |
+| WebAuthn | 基于公钥的强认证，Passkeys 的 Web 基础 |
+| Trusted Types | 限制危险 DOM 注入 sink，降低 DOM XSS |
+| Permissions API | 查询部分权限状态 |
+| Clipboard/Media/Geolocation | 受安全上下文、权限和用户手势控制 |
+
+WebAuthn 的信任根在认证器和服务端挑战校验。前端只负责发起注册/认证、传递 challenge、处理失败和用户体验。
 
 ## 用法
 
-内容待补充...
+查询权限：
+
+```ts
+async function queryCameraPermission() {
+  if (!("permissions" in navigator)) {
+    return "unsupported"
+  }
+
+  const status = await navigator.permissions.query({ name: "camera" as PermissionName })
+
+  // 中文注释：权限状态只能辅助 UI，真正调用 API 时仍可能失败。
+  return status.state
+}
+```
+
+Trusted Types 策略：
+
+```ts
+const policy = window.trustedTypes?.createPolicy("default", {
+  createHTML(input) {
+    // 中文注释：真实项目应使用经过审计的 sanitizer，而不是直接返回 input。
+    return input.replaceAll("<script", "&lt;script")
+  },
+})
+
+const html = policy?.createHTML("<strong>safe</strong>")
+```
+
+WebAuthn 认证的前端形态：
+
+```ts
+async function startPasskeyLogin(options: PublicKeyCredentialRequestOptions) {
+  const credential = await navigator.credentials.get({
+    publicKey: options,
+  })
+
+  // 中文注释：credential 必须发送给服务端验证签名、challenge 和 rpId。
+  return credential
+}
+```
 
 ## 实践
 
-内容待补充...
+安全 API 接入流程：
+
+1. 服务端先定义威胁模型和校验规则。
+2. 前端使用安全上下文 HTTPS，处理权限拒绝、取消和超时。
+3. 对 DOM XSS 高风险项目，CSP 与 Trusted Types 组合推进。
+4. 对 Passkeys，设计账号恢复、设备丢失和多设备同步策略。
+
+权限请求要延迟到用户明确触发，不在页面加载时弹窗。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 前端验证代替服务端验证 | 认证、授权、签名必须服务端确认 |
+| Trusted Types 策略过宽 | 策略越少越好，集中审计 sanitizer |
+| 页面加载即请求权限 | 用户手势触发，并说明用途 |
+| WebAuthn 忽略恢复流程 | 设计备用认证和账户恢复 |
+| 权限状态当最终结果 | 实际 API 调用仍要 try/catch |
+
+## 参考资料
+
+- [MDN: Web Authentication API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API)
+- [MDN: Trusted Types API](https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API)
+- [W3C: Trusted Types](https://www.w3.org/TR/trusted-types/)
+- [MDN: Permissions API](https://developer.mozilla.org/en-US/docs/Web/API/Permissions_API)

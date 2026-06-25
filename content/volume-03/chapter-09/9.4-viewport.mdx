@@ -6,24 +6,121 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.4"
 tags: ["视口", "DPR", "IntersectionObserver", "ResizeObserver"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
+    slug: "volume-03/chapter-09/9.3-events"
+  - title: "9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch"
+    slug: "volume-03/chapter-09/9.5-script-loading"
+  - title: "9.2 DOM 操作 API：createElement、insertBefore、现代方法、dataset"
+    slug: "volume-03/chapter-09/9.2-dom-api"
+crossRefs:
+  - title: "9.3 事件系统：事件流、事件对象、事件委托、被动事件监听器、事件循环与渲染"
+    slug: "volume-03/chapter-09/9.3-events"
+  - title: "9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch"
+    slug: "volume-03/chapter-09/9.5-script-loading"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+浏览器中至少要区分三类尺寸：CSS 像素、设备像素和视口。`devicePixelRatio` 表示一个 CSS 像素对应多少设备像素。移动端还要区分 layout viewport 和 visual viewport：前者用于布局，后者受缩放、软键盘影响。
+
+`getBoundingClientRect()` 返回元素相对视口的几何信息。读取它可能触发布局刷新，如果前面刚写入了影响布局的样式。IntersectionObserver 和 ResizeObserver 则用异步方式观察交叉和尺寸变化，适合替代大量滚动/resize 计算。
 
 ## 用法
 
-内容待补充...
+读取几何信息：
+
+```ts
+const element = document.querySelector<HTMLElement>(".target")
+
+if (element) {
+  const rect = element.getBoundingClientRect()
+
+  // 中文注释：rect 是相对当前视口的位置，不是文档绝对坐标。
+  console.table({
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  })
+}
+```
+
+图片懒加载：
+
+```ts
+const observer = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) {
+      continue
+    }
+
+    const image = entry.target as HTMLImageElement
+    image.src = image.dataset.src ?? ""
+    observer.unobserve(image)
+  }
+}, { rootMargin: "200px" })
+
+document.querySelectorAll<HTMLImageElement>("img[data-src]").forEach((image) => {
+  // 中文注释：提前 200px 加载，减少图片进入视口后才请求的空白。
+  observer.observe(image)
+})
+```
+
+监听元素尺寸：
+
+```ts
+const resizeObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    // 中文注释：ResizeObserver 观察元素自身尺寸，不依赖窗口 resize。
+    console.log(entry.contentRect.width)
+  }
+})
+```
 
 ## 实践
 
-内容待补充...
+几何计算要遵守读写分离：
+
+```ts
+function alignPopover(anchor: HTMLElement, popover: HTMLElement) {
+  const rect = anchor.getBoundingClientRect()
+
+  requestAnimationFrame(() => {
+    // 中文注释：读取后在帧回调中统一写入，降低布局抖动风险。
+    popover.style.transform = `translate(${rect.left}px, ${rect.bottom}px)`
+  })
+}
+```
+
+Canvas、WebGL 和截图场景需要关注 DPR：
+
+```ts
+function resizeCanvas(canvas: HTMLCanvasElement) {
+  const rect = canvas.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+
+  canvas.width = Math.round(rect.width * dpr)
+  canvas.height = Math.round(rect.height * dpr)
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 把 CSS 像素当设备像素 | Canvas 和图片处理要乘 DPR |
+| 读写布局交错 | 先读 rect，再批量写样式 |
+| 用 scroll 监听实现曝光 | 改用 IntersectionObserver |
+| 只看 window resize | 组件尺寸变化用 ResizeObserver |
+| 软键盘遮挡输入框 | 移动端关注 VisualViewport |
+
+## 参考资料
+
+- [MDN: Element.getBoundingClientRect](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect)
+- [MDN: Intersection Observer API](https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API)
+- [MDN: VisualViewport](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport)
+- [MDN: ResizeObserver](https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver)

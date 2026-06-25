@@ -6,24 +6,111 @@ chapter: "第 2 章 计算机网络协议"
 section: "2.1"
 tags: ["OSI", "TCP/IP", "网络模型", "协议"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
+    slug: "volume-01/chapter-02/2.2-tcp"
+  - title: "2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP"
+    slug: "volume-01/chapter-02/2.3-udp"
+crossRefs:
+  - title: "1.5 磁盘 I/O 与文件系统：同步/异步 I/O、Node.js 的 libuv 事件循环"
+    slug: "volume-01/chapter-01/1.5-disk-io"
+  - title: "2.2 TCP 协议：三次握手、四次挥手、滑动窗口、拥塞控制、TIME_WAIT、Nagle 算法"
+    slug: "volume-01/chapter-02/2.2-tcp"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+OSI 七层模型是教学和排障模型，TCP/IP 四层模型更贴近互联网协议栈的工程实现。前端工程师不需要直接操作链路层或网络层，但必须能把一次页面请求拆成多个阶段：域名解析、连接建立、TLS 握手、HTTP 请求响应、资源解析和运行时执行。
+
+| OSI 层 | TCP/IP 层 | 典型协议或对象 | 前端排查时关注什么 |
+|---|---|---|---|
+| 应用层 | 应用层 | HTTP、DNS、WebSocket、SMTP | 状态码、请求头、缓存策略、跨域策略、消息格式 |
+| 表示层 | 应用层 | TLS、压缩、字符编码 | 证书链、协议版本、内容编码、乱码 |
+| 会话层 | 应用层 | Cookie、Token、连接会话 | 登录态、连接复用、会话过期 |
+| 传输层 | 传输层 | TCP、UDP、QUIC | 握手、重传、拥塞、丢包、端口 |
+| 网络层 | 网络层 | IPv4、IPv6、ICMP | 路由、IP 可达性、跨地域链路 |
+| 数据链路层 | 网络接口层 | Ethernet、Wi-Fi、ARP | 局域网地址解析、网卡、MTU |
+| 物理层 | 网络接口层 | 光纤、电缆、无线信号 | 物理连通性和信号质量 |
+
+<Callout type="info" title="前端排障的核心">
+不要把“请求慢”直接等同于“接口慢”。同一个瀑布图里，DNS、TCP、TLS、TTFB 和 Content Download 分别对应不同层的问题，优化手段也不同。
+</Callout>
+
+从浏览器发出 `https://example.com/app.js` 的请求时，实际链路可以简化为：
+
+```text
+URL 输入
+  -> DNS 查询域名对应的 IP
+  -> TCP 或 QUIC 建立传输连接
+  -> TLS 验证证书并协商密钥
+  -> HTTP 发送请求头和请求体
+  -> 服务器返回响应
+  -> 浏览器解析、缓存并执行资源
+```
+
+这个分层模型的价值不在于背诵层名，而在于定位边界：HTTP 负责语义，TLS 负责加密和身份校验，TCP 负责可靠字节流，IP 负责寻址和路由，链路层负责同一网络内的帧传输。
 
 ## 用法
 
-内容待补充...
+分析一个网络问题时，先按层级建立证据链。
+
+| 现象 | 优先观察 | 可能层级 | 常用工具 |
+|---|---|---|---|
+| 域名打不开 | DNS 是否解析成功 | 应用层 / 网络层 | `nslookup`、`dig`、DevTools |
+| 首次请求慢 | DNS、TCP、TLS、TTFB 分段耗时 | 应用层到传输层 | DevTools Network、HAR |
+| WebSocket 频繁断开 | 连接保活、代理超时、网络切换 | 应用层 / 传输层 | DevTools WS 面板、服务端日志 |
+| 本地能访问，线上不行 | 证书、代理、CORS、CDN 回源 | 应用层 / 表示层 | `curl -v`、网关日志 |
+| 部分地区失败 | 解析、路由、IPv6、CDN 调度 | 网络层 | 监控、探针、运营商链路 |
+
+```bash
+# 用 curl 拆出一次 HTTPS 请求的关键耗时
+curl -o NUL -s -w "dns=%{time_namelookup}\nconnect=%{time_connect}\ntls=%{time_appconnect}\nttfb=%{time_starttransfer}\ntotal=%{time_total}\n" https://example.com/
+```
+
+在浏览器 DevTools 里也可以按同样思路看瀑布图：
+
+- `Queueing` 高：可能是浏览器并发限制、优先级调度或 Service Worker。
+- `DNS Lookup` 高：检查 DNS 缓存、解析链路、CDN 调度。
+- `Initial connection` 高：检查 TCP/QUIC 建连、网络抖动、跨地域。
+- `SSL` 高：检查证书链、TLS 版本、是否缺少连接复用。
+- `Waiting for server response` 高：检查服务端处理、数据库、回源链路。
+- `Content Download` 高：检查资源体积、带宽、压缩和缓存。
 
 ## 实践
 
-内容待补充...
+一个前端页面的首屏优化通常会同时触及多层协议。下面是更接近真实项目的排查顺序。
+
+1. 先用 DevTools 导出 HAR，确认慢在 DNS、连接、TLS、TTFB 还是下载。
+2. 如果 DNS 慢，检查是否有过多第三方域名，并考虑 `dns-prefetch` 或减少域名分片。
+3. 如果连接和 TLS 慢，检查是否开启 HTTP/2 或 HTTP/3、是否复用连接、证书链是否过长。
+4. 如果 TTFB 慢，进入服务端和 CDN 回源链路，不在前端盲目压缩资源。
+5. 如果下载慢，压缩资源、拆分非关键资源、设置长期缓存。
+
+```html
+<!-- 对确定会访问的第三方域名提前解析 DNS -->
+<link rel="dns-prefetch" href="//static.example.com" />
+
+<!-- 对关键跨域资源提前完成 DNS、TCP 和 TLS 准备 -->
+<link rel="preconnect" href="https://api.example.com" crossorigin />
+```
+
+`dns-prefetch` 和 `preconnect` 都是优化手段，不是默认越多越好。每个 `preconnect` 都可能占用连接和服务端资源，应该只给关键路径上的少数域名使用。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 为什么不准确 | 更可靠的处理方式 |
+|---|---|---|
+| 只要 HTTP 状态码是 200 就说明网络没问题 | 200 只能说明应用层响应成功，不代表 DNS、TLS 和传输层耗时合理 | 看完整瀑布图和服务端日志 |
+| 把 TLS 当作 OSI 表示层的固定实现 | TLS 在工程上位于传输层之上、应用层之下，实际归类会随模型不同而变化 | 用“它解决什么问题”判断，而不是死记层号 |
+| 认为 HTTP/2 一定比 HTTP/1.1 快 | HTTP/2 多路复用会缓解队头阻塞，但也受服务端、代理、资源优先级影响 | 用真实环境 A/B 或监控验证 |
+| 认为前端可以直接控制 TCP 参数 | 浏览器屏蔽了底层套接字，多数 TCP 行为由操作系统和浏览器网络栈决定 | 通过资源策略、协议选择和服务端配置间接优化 |
+| 忽略代理和 CDN | 线上链路常经过 CDN、WAF、负载均衡、企业代理 | 排查时同时看客户端、边缘节点和源站 |
+
+## 参考资料
+
+- [RFC 9110: HTTP Semantics](https://datatracker.ietf.org/doc/html/rfc9110)
+- [RFC 9293: Transmission Control Protocol](https://datatracker.ietf.org/doc/html/rfc9293)
+- [RFC 9000: QUIC](https://datatracker.ietf.org/doc/html/rfc9000)

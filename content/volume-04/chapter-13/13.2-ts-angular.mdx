@@ -5,25 +5,150 @@ volume: "卷四：框架与状态管理"
 chapter: "第 13 章 Angular 原理与生态"
 section: "13.2"
 tags: ["装饰器", "AOT", "JIT", "TypeScript"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "框架重构"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "13.1 Angular 架构：NgModule/Standalone Components、依赖注入树"
+    slug: "volume-04/chapter-13/13.1-angular-arch"
+  - title: "13.3 变更检测：Zone.js、Default/OnPush、ChangeDetectorRef、Signals"
+    slug: "volume-04/chapter-13/13.3-change-detection"
+  - title: "13.4 模板语法：插值、绑定、结构指令、属性指令、管道"
+    slug: "volume-04/chapter-13/13.4-template"
+crossRefs:
+  - title: "13.1 Angular 架构：NgModule/Standalone Components、依赖注入树"
+    slug: "volume-04/chapter-13/13.1-angular-arch"
+  - title: "13.3 变更检测：Zone.js、Default/OnPush、ChangeDetectorRef、Signals"
+    slug: "volume-04/chapter-13/13.3-change-detection"
+lastUpdated: "2026-06-26"
 ---
 
-## 原理
+## 章节定位
 
-内容待补充...
+TypeScript 与 Angular：装饰器、AOT/JIT 不再只按“是什么、怎么用”展开，而是放回「第 13 章 Angular 原理与生态」的知识链路中理解：把依赖注入、模板编译、变更检测、路由表单和 RxJS 看成一套企业应用约束系统。
 
-## 用法
+> **本节要解决的真实问题**：当项目里遇到 TypeScript 与 Angular、TypeScript、Angular、装饰器 相关设计、选型、接入或排障时，能说清楚边界、取舍、验证方式和失败后的回退策略。
 
-内容待补充...
+### 学习目标
 
-## 实践
+| 层次 | 学完后应该能做到 |
+|---|---|
+| 概念定位 | 解释 TypeScript 与 Angular 在 Angular 应用 中解决的真实问题 |
+| 机制理解 | 拆解 TypeScript、Angular 与失败路径 |
+| 工程判断 | 为 装饰器 选择可验证、可回退的落地方案 |
+| 验证闭环 | 围绕“注入边界如何划分”建立判断标准 |
 
-内容待补充...
+## 知识地图
 
-## 陷阱
+Angular 的价值来自框架级一致性：服务、组件、模板和数据流都被放进可预测的生命周期和依赖树中。
 
-内容待补充...
+| 层级 | 本节关注点 | 判断证据 |
+|---|---|---|
+| 问题入口 | TypeScript 与 Angular、TypeScript、Angular 会在什么业务场景中暴露 | 后台管理系统、复杂表单 |
+| 运行机制 | 注入边界如何划分；变更检测何时触发；Observable 生命周期谁负责 | Angular DevTools、change detection cycles |
+| 工程约束 | Standalone/NgModule、Default/OnPush、Reactive Forms、RxJS 操作符 | 兼容性、性能、安全、维护成本和回退方案 |
+| 关联知识 | 与同章和跨章内容形成可追踪链路 | 关系链接、示例代码、测试和线上数据 |
+
+### 延展关系
+
+- 同章延伸：[13.1 Angular 架构：NgModule/Standalone Components、依赖注入树](/volume-04/chapter-13/13.1-angular-arch)
+- 同章延伸：[13.3 变更检测：Zone.js、Default/OnPush、ChangeDetectorRef、Signals](/volume-04/chapter-13/13.3-change-detection)
+- 同章延伸：[13.4 模板语法：插值、绑定、结构指令、属性指令、管道](/volume-04/chapter-13/13.4-template)
+- 交叉参照：[13.1 Angular 架构：NgModule/Standalone Components、依赖注入树](/volume-04/chapter-13/13.1-angular-arch)
+- 交叉参照：[13.3 变更检测：Zone.js、Default/OnPush、ChangeDetectorRef、Signals](/volume-04/chapter-13/13.3-change-detection)
+
+## 核心机制
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| TypeScript 与 Angular | Angular 用依赖注入、模板编译、变更检测和 Observable 数据流约束大型应用。 | 检查模板类型、变更检测次数、订阅清理和路由表单状态。 |
+| TypeScript | 围绕“变更检测何时触发”拆解概念边界、运行机制和失败路径。 | change detection cycles |
+| Angular | 围绕“Observable 生命周期谁负责”拆解概念边界、运行机制和失败路径。 | subscription 泄漏 |
+| 装饰器 | 围绕“表单和路由状态如何建模”拆解概念边界、运行机制和失败路径。 | bundle 分析 |
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+## 工程决策
+
+TypeScript 与 Angular：装饰器、AOT/JIT 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
+
+| 决策维度 | 应该如何判断 | 验证方式 |
+|---|---|---|
+| Standalone/NgModule | 复杂页面优先明确服务边界、变更检测策略和订阅生命周期。 | 检查模板类型、变更检测次数、订阅清理和路由表单状态。 |
+| Default/OnPush | 在“复杂表单”场景下判断收益、成本、失败路径和回退策略。 | change detection cycles |
+| Reactive Forms | 在“权限路由”场景下判断收益、成本、失败路径和回退策略。 | subscription 泄漏 |
+| RxJS 操作符 | 在“多团队企业应用”场景下判断收益、成本、失败路径和回退策略。 | bundle 分析 |
+
+## 实战路径
+
+推荐按四步推进：
+
+1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
+2. **建立样例**：用最小代码或配置复现 TypeScript 与 Angular 的核心行为，不直接在完整业务里猜测。
+3. **接入约束**：把 Standalone/NgModule、Default/OnPush、Reactive Forms 写进方案，说明不满足时如何降级。
+4. **验证沉淀**：用 Angular DevTools、change detection cycles、subscription 泄漏 形成证据，并把结论回写到团队文档。
+
+```ts
+type ChapterDecision = {
+  objective: string
+  constraints: string[]
+  signals: string[]
+  rollback: string
+}
+
+/**
+ * 生成本节主题的落地决策记录。
+ * @param owner 负责验证和维护该方案的角色或小组。
+ * @returns 可写入技术方案或评审记录的决策对象。
+ */
+function createDecisionRecord(owner: string): ChapterDecision {
+  return {
+    objective: "装饰器、AOT/JIT",
+    constraints: ["TypeScript 与 Angular","TypeScript","Angular","装饰器"],
+    signals: ["Angular DevTools","change detection cycles","subscription 泄漏"],
+    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
+    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
+  }
+}
+
+console.table(createDecisionRecord("frontend"))
+```
+
+## 诊断与验证
+
+| 现象 | 定位动作 | 判断完成的证据 |
+|---|---|---|
+| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
+| 性能或稳定性退化 | 记录基线，再观察 Angular DevTools、change detection cycles、subscription 泄漏 | 指标回到预算内，并且关键路径有回归测试 |
+| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+
+## 常见误区
+
+| 误区 | 更可靠的处理方式 |
+|---|---|
+| 在模板中放复杂计算会被变更检测反复触发。 | 先用最小场景复现，再决定是否升级方案。 |
+| 不了解 Zone.js 与变更检测关系 | 先用最小场景复现，再决定是否升级方案。 |
+| 模板里放复杂计算 | 先用最小场景复现，再决定是否升级方案。 |
+| 未取消订阅或缺少错误处理 | 先用最小场景复现，再决定是否升级方案。 |
+
+## 后续补写清单
+
+为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+
+- 补一张机制图：画清楚 TypeScript 与 Angular、TypeScript、Angular、装饰器 之间的数据流、控制流或依赖关系。
+- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
+- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
+- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
+- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+
+## 参考资料
+
+- [https://angular.dev/overview](https://angular.dev/overview)
+- [https://angular.dev/guide/components](https://angular.dev/guide/components)
+- [https://angular.dev/guide/di](https://angular.dev/guide/di)
+- [https://angular.dev/guide/signals](https://angular.dev/guide/signals)
+- [https://angular.dev/guide/zoneless](https://angular.dev/guide/zoneless)

@@ -5,25 +5,97 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 8 章 浏览器架构与渲染引擎"
 section: "8.1"
 tags: ["浏览器", "多进程", "Blink", "WebKit"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "8.2 导航流程：URL 输入到页面显示的全过程"
+    slug: "volume-03/chapter-08/8.2-navigation"
+  - title: "8.3 渲染管线深入：解析 HTML、样式计算、布局、绘制、合成"
+    slug: "volume-03/chapter-08/8.3-rendering-pipeline"
+crossRefs:
+  - title: "7.9 类型体操与模式：HKT、类型级编程挑战、类型驱动开发（TDD）"
+    slug: "volume-02/chapter-07/7.9-type-gymnastics"
+  - title: "8.2 导航流程：URL 输入到页面显示的全过程"
+    slug: "volume-03/chapter-08/8.2-navigation"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+现代浏览器更像一个小型操作系统：浏览器进程负责 UI、权限、网络调度和进程管理；渲染进程运行网页；GPU 进程负责图形相关工作；网络、存储、扩展、音视频等能力也可能拆到独立进程。具体拆分会随浏览器、平台和安全策略变化，但方向一致：用进程隔离提升稳定性和安全性。
+
+| 进程/线程 | 典型职责 |
+|---|---|
+| Browser Process | 地址栏、标签页、权限、下载、进程调度 |
+| Renderer Process | HTML/CSS/JS、DOM、样式、布局、部分绘制 |
+| GPU Process | GPU 命令、合成、部分光栅化 |
+| Network Service | DNS、连接、缓存、证书、请求调度 |
+| Compositor Thread | 合成层调度、滚动和部分动画 |
+
+站点隔离把不同 site 放到不同渲染进程中，降低 renderer 漏洞跨站读取敏感数据的风险。代价是更多进程和内存开销。Chrome/Blink、Safari/WebKit、Firefox/Gecko 都使用多进程架构，但进程模型、站点隔离粒度和平台集成方式不同。
 
 ## 用法
 
-内容待补充...
+前端工程师通常不直接控制进程模型，但需要理解它对性能和安全的影响：
+
+```ts
+function logNavigationContext() {
+  const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined
+
+  if (!navigation) {
+    return
+  }
+
+  // 中文注释：导航计时只能反映页面视角，不能直接告诉你进程分配情况。
+  console.table({
+    dns: navigation.domainLookupEnd - navigation.domainLookupStart,
+    connect: navigation.connectEnd - navigation.connectStart,
+    response: navigation.responseEnd - navigation.responseStart,
+    domInteractive: navigation.domInteractive,
+  })
+}
+```
+
+排查多进程相关问题时，优先使用浏览器工具：
+
+- Chrome Task Manager：观察标签页、扩展、GPU、网络服务的内存和 CPU。
+- Performance 面板：看主线程、合成线程、GPU 相关事件。
+- Memory 面板：定位 JS 堆、DOM 节点和 detached DOM。
+- `chrome://process-internals`：观察站点实例和进程分配，适合调试隔离行为。
 
 ## 实践
 
-内容待补充...
+理解进程模型后，很多现象会更容易定位：
+
+1. 一个标签页崩溃但浏览器不崩溃，是进程隔离带来的稳定性收益。
+2. 跨站 iframe、COOP/COEP、SharedArrayBuffer、站点隔离会影响进程和安全边界。
+3. GPU 进程异常可能表现为黑屏、闪烁、WebGL 失败或合成回退。
+4. 同一个页面内主线程长任务仍会阻塞交互，因为 JS、样式和布局主要在 renderer 内竞争。
+
+```ts
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    // 中文注释：长任务说明 renderer 主线程被占用，和多进程隔离不是同一层问题。
+    console.log("long task", entry.duration)
+  }
+})
+
+observer.observe({ type: "longtask", buffered: true })
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 把所有卡顿归因于 JS 引擎 | 同时检查样式、布局、绘制、合成和 GPU |
+| 认为多进程必然更快 | 多进程主要提升稳定性和安全性，也会增加内存 |
+| 忽略 iframe 的隔离成本 | 跨站 iframe 会增加进程和通信成本 |
+| 混淆内核和 JS 引擎 | Blink/WebKit/Gecko 是渲染引擎，V8/JavaScriptCore/SpiderMonkey 是 JS 引擎 |
+| 只在 Chrome 验证 | Safari/WebKit 和 Firefox/Gecko 仍需单独验证 |
+
+## 参考资料
+
+- [Chrome Developers: Inside look at modern web browser, part 1](https://developer.chrome.com/blog/inside-browser-part1)
+- [Chromium: Site Isolation](https://www.chromium.org/developers/design-documents/site-isolation/)
+- [WebKit Documentation: WebKit2](https://docs.webkit.org/Deep%20Dive/Architecture/WebKit2.html)

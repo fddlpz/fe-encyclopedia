@@ -5,25 +5,122 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.6"
 tags: ["ESM", "CommonJS", "moduleResolution", "namespace"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
+    slug: "volume-02/chapter-07/7.5-declarations"
+  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
+    slug: "volume-02/chapter-07/7.7-type-safety"
+  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
+    slug: "volume-02/chapter-07/7.4-type-utils"
+crossRefs:
+  - title: "7.5 类型声明与声明文件：.d.ts、declare、模块声明、DefinitelyTyped"
+    slug: "volume-02/chapter-07/7.5-declarations"
+  - title: "7.7 类型安全实践：品牌类型、穷尽检查、类型谓词、satisfies、noUncheckedIndexedAccess"
+    slug: "volume-02/chapter-07/7.7-type-safety"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+TypeScript 同时要理解源码模块语法、运行时模块系统和类型声明解析。ES Module 和 CommonJS 的差异不只是语法不同，还涉及加载时机、默认导出、实时绑定、tree shaking、文件扩展名和 `package.json` 的 `type`、`exports` 字段。
+
+| 选项 | 作用 |
+|---|---|
+| `module` | TypeScript 输出或保留哪种模块语法 |
+| `moduleResolution` | 如何查找模块和声明文件 |
+| `baseUrl` / `paths` | 编译期路径别名 |
+| `types` / `typeRoots` | 控制全局类型包加载 |
+| `namespace` | 旧式内部模块，现代项目较少新增 |
+
+现代前端项目通常使用 ESM，并让构建工具处理打包。Node.js 库需要更谨慎，因为 ESM、CJS、双包发布和条件导出会直接影响用户怎么导入。
 
 ## 用法
 
-内容待补充...
+Next.js、Vite 等现代项目通常保留 ESM：
+
+```json
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}
+```
+
+Node.js 库项目要匹配 Node 的解析规则：
+
+```json
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true,
+    "outDir": "dist"
+  },
+  "type": "module"
+}
+```
+
+路径别名只是编译期能力，运行时也要让框架或打包器认识同样规则：
+
+```ts
+import { createClient } from "@/shared/api"
+
+// 中文注释：如果运行时工具没有配置相同别名，编译能过但启动会找不到模块。
+createClient()
+```
+
+旧代码中的 namespace 可维护，但新模块优先 ESM：
+
+```ts
+export namespace LegacyMath {
+  export function sum(a: number, b: number) {
+    return a + b
+  }
+}
+```
 
 ## 实践
 
-内容待补充...
+模块治理建议：
+
+1. 应用项目：优先跟随框架推荐，例如 Next.js 使用 Bundler 风格解析。
+2. 库项目：明确 ESM/CJS 支持范围，避免无意双包风险。
+3. 类型入口：`exports` 中同步声明 `types`，不要只测运行时代码。
+4. 路径别名：限制别名数量，避免绕过包边界和循环依赖。
+
+```json
+{
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  }
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| `paths` 配了但运行时报错 | 同步配置 bundler、test runner、Node loader 或 tsx |
+| 默认导入 CJS 库表现异常 | 检查 `esModuleInterop` 和库真实导出 |
+| 双包发布状态不一致 | 用同一源码生成产物，并测试 import 与 require |
+| 滥用 namespace | 新代码使用 ESM，namespace 仅用于旧声明或全局库建模 |
+| 忽略文件扩展名 | NodeNext 下相对 ESM 导入需要关注 `.js` 扩展 |
+
+## 参考资料
+
+- [TypeScript TSConfig: module](https://www.typescriptlang.org/tsconfig/#module)
+- [TypeScript TSConfig: moduleResolution](https://www.typescriptlang.org/tsconfig/#moduleResolution)
+- [TypeScript Handbook: Modules](https://www.typescriptlang.org/docs/handbook/modules.html)
+- [Node.js Packages: conditional exports](https://nodejs.org/api/packages.html#conditional-exports)

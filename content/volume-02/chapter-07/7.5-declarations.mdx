@@ -5,25 +5,122 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.5"
 tags: ["声明文件", ".d.ts", "declare", "类型定义"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
+    slug: "volume-02/chapter-07/7.4-type-utils"
+  - title: "7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace"
+    slug: "volume-02/chapter-07/7.6-modules"
+  - title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
+    slug: "volume-02/chapter-07/7.3-advanced-types"
+crossRefs:
+  - title: "7.4 类型工具：keyof、typeof、内置工具类型全解（Partial/Required/Pick/Omit等）"
+    slug: "volume-02/chapter-07/7.4-type-utils"
+  - title: "7.6 模块与命名空间：ES Module vs CommonJS、moduleResolution、paths、namespace"
+    slug: "volume-02/chapter-07/7.6-modules"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+`.d.ts` 声明文件只描述类型，不输出运行时代码。它让 TypeScript 理解 JavaScript 库、全局变量、非代码资源和平台 API。`declare` 的含义是“这个值由外部环境提供，我只在这里声明形状”。
+
+| 场景 | 常用写法 |
+|---|---|
+| 声明全局变量 | `declare global` |
+| 声明无类型 npm 包 | `declare module "pkg"` |
+| 声明资源导入 | `declare module "*.svg"` |
+| 发布库类型 | `types` 字段或同名 `.d.ts` |
+| 社区类型 | `@types/*` 和 DefinitelyTyped |
+
+声明文件必须和真实运行时一致。类型写得比运行时更乐观，会把错误推迟到线上。
 
 ## 用法
 
-内容待补充...
+声明资源模块：
+
+```ts
+// global.d.ts
+declare module "*.module.css" {
+  const classes: Record<string, string>
+  export default classes
+}
+
+declare module "*.svg" {
+  const src: string
+  export default src
+}
+```
+
+扩展全局对象：
+
+```ts
+// analytics.d.ts
+export {}
+
+declare global {
+  interface Window {
+    analytics?: {
+      track(eventName: string, payload?: Record<string, unknown>): void
+    }
+  }
+}
+```
+
+使用时仍要处理缺失：
+
+```ts
+window.analytics?.track("article_read", {
+  // 中文注释：声明文件只告诉 TS 可能存在该对象，不保证脚本已经加载成功。
+  slug: "volume-02/chapter-07/7.5-declarations",
+})
+```
+
+给无类型库补最小声明：
+
+```ts
+declare module "legacy-formatter" {
+  export function formatDate(input: Date, pattern: string): string
+}
+```
 
 ## 实践
 
-内容待补充...
+维护声明文件时，建议遵循：
+
+1. 最小声明：只声明项目实际使用的 API，避免猜完整库类型。
+2. 靠近边界：第三方补丁放在 `types/` 或 `global.d.ts`，不要散落在业务代码中。
+3. 持续验证：升级第三方库时同步跑类型检查和关键用例。
+4. 发布库时同时发布 `.d.ts`，并用 `exports`、`types`、`typesVersions` 检查多入口类型。
+
+```json
+{
+  "name": "@acme/ui",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  }
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 在 `.d.ts` 写实现逻辑 | 声明文件只放类型和声明 |
+| 全局声明污染项目 | 用 `export {}` 把文件变成模块，再 `declare global` |
+| 声明比运行时更宽或更窄 | 以真实库行为和测试为准 |
+| 忘记处理可选全局对象 | 运行时脚本可能加载失败，仍需空值保护 |
+| 发布库缺少类型入口 | 检查 `types`、`exports.types` 和构建产物 |
+
+## 参考资料
+
+- [TypeScript Handbook: Declaration Files](https://www.typescriptlang.org/docs/handbook/declaration-files/introduction.html)
+- [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped)
+- [TypeScript: Publishing](https://www.typescriptlang.org/docs/handbook/declaration-files/publishing.html)

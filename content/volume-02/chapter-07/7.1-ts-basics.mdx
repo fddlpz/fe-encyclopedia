@@ -5,25 +5,141 @@ volume: "卷二：Web 标准与语言规范"
 chapter: "第 7 章 TypeScript 全栈指南"
 section: "7.1"
 tags: ["TypeScript", "类型系统", "static typing", "never"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
+    slug: "volume-02/chapter-07/7.2-basic-types"
+  - title: "7.3 高级类型：泛型、条件类型、映射类型、模板字面量类型、infer、递归类型"
+    slug: "volume-02/chapter-07/7.3-advanced-types"
+crossRefs:
+  - title: "6.13 新语法特性：可选链、空值合并、逻辑赋值、Pipeline Operator、Decorators"
+    slug: "volume-02/chapter-06/6.13-new-syntax"
+  - title: "7.2 基本类型与复合类型：interface vs type、索引签名、联合类型、交叉类型、元组"
+    slug: "volume-02/chapter-07/7.2-basic-types"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+TypeScript 是 JavaScript 的静态类型超集。它在编译期检查类型，但运行时仍然是 JavaScript；类型不会自动生成运行时校验，也不会改变浏览器或 Node.js 的执行语义。
+
+| 概念 | 含义 | 工程意义 |
+|---|---|---|
+| 静态类型 | 运行前检查变量、参数、返回值和对象结构 | 提前发现契约错误 |
+| 动态类型 | 运行时值才决定实际行为 | 仍要处理 JSON、表单、URL 等外部输入 |
+| 类型推断 | 编译器根据赋值、返回值和控制流推导类型 | 少写冗余类型，保留可读性 |
+| 类型断言 | 告诉编译器“我比你更清楚” | 应用于边界适配，不应掩盖错误 |
+| `unknown` | 安全的未知类型，使用前必须收窄 | 适合外部输入 |
+| `any` | 关闭类型检查 | 适合迁移过渡，不能长期扩散 |
+| `never` | 不可能出现的值 | 用于穷尽性检查和不可达状态 |
+
+TypeScript 的核心价值不是“写更多类型”，而是把业务不变量放到编译期。比如订单状态、接口返回、组件 props、路由参数和权限模型都应该有明确类型边界。
 
 ## 用法
 
-内容待补充...
+外部输入优先用 `unknown`，再通过类型守卫收窄：
+
+```ts
+type UserProfile = {
+  id: string
+  name: string
+}
+
+function isUserProfile(value: unknown): value is UserProfile {
+  if (typeof value !== "object" || value === null) {
+    return false
+  }
+
+  const record = value as Record<string, unknown>
+
+  // 中文注释：运行时校验外部数据，类型守卫通过后 TypeScript 才信任结构。
+  return typeof record.id === "string" && typeof record.name === "string"
+}
+
+function parseUserProfile(raw: unknown) {
+  if (!isUserProfile(raw)) {
+    throw new Error("Invalid user profile")
+  }
+
+  return raw
+}
+```
+
+`never` 适合做联合类型穷尽检查：
+
+```ts
+type LoadingState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: string[] }
+  | { status: "error"; message: string }
+
+function renderState(state: LoadingState) {
+  switch (state.status) {
+    case "idle":
+      return "等待加载"
+    case "loading":
+      return "加载中"
+    case "success":
+      return state.data.join(", ")
+    case "error":
+      return state.message
+    default: {
+      // 中文注释：新增状态但忘记处理时，这里会触发编译错误。
+      const exhaustiveCheck: never = state
+      return exhaustiveCheck
+    }
+  }
+}
+```
+
+类型断言应尽量靠近边界：
+
+```ts
+const root = document.getElementById("app")
+
+if (!(root instanceof HTMLElement)) {
+  throw new Error("Missing #app root")
+}
+
+// 中文注释：经过运行时判断后，后续代码不需要再使用强制断言。
+root.dataset.ready = "true"
+```
 
 ## 实践
 
-内容待补充...
+团队落地 TypeScript 时，应先启用 `strict`，再根据项目成熟度逐步打开更严格选项，例如 `noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、`noImplicitOverride`。这些选项会暴露更多边界问题，但能减少线上空值和索引访问错误。
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
+  }
+}
+```
+
+类型设计应遵循三个原则：
+
+1. 边界显式：接口响应、持久化数据、消息事件和环境变量必须先校验再进入业务层。
+2. 内部简洁：函数内部依赖推断，不要给每个局部变量重复标注类型。
+3. 不变量优先：用联合类型、字面量类型和 `never` 表达“哪些状态不可能同时存在”。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 用 `any` 快速通过编译 | 改用 `unknown`，在边界写类型守卫或 schema 校验 |
+| 断言过多 | 先补运行时判断，再让控制流自动收窄 |
+| 以为 TS 会校验 JSON | TS 类型只存在编译期，外部输入仍要运行时校验 |
+| 手写冗余类型 | 能稳定推断时交给编译器，公共 API 再显式标注 |
+| 忽略 `never` | 复杂状态机用 `never` 做穷尽性保护 |
+
+## 参考资料
+
+- [TypeScript Handbook: Narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html)
+- [TypeScript TSConfig Reference](https://www.typescriptlang.org/tsconfig/)
+- [TypeScript Handbook: Everyday Types](https://www.typescriptlang.org/docs/handbook/2/everyday-types.html)

@@ -5,25 +5,128 @@ volume: "卷三：浏览器与运行时"
 chapter: "第 10 章 运行时深入"
 section: "10.3"
 tags: ["垃圾回收", "分代回收", "WeakMap", "内存模型"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "10.2 事件循环详解：宏任务队列、微任务队列、process.nextTick、requestAnimationFrame"
+    slug: "volume-03/chapter-10/10.2-event-loop"
+  - title: "10.4 Node.js 运行时：libuv 架构、事件循环阶段、CommonJS、ES Module"
+    slug: "volume-03/chapter-10/10.4-nodejs"
+  - title: "10.1 JavaScript 引擎：V8 架构、隐藏类、内联缓存、快速属性与字典模式"
+    slug: "volume-03/chapter-10/10.1-js-engine"
+crossRefs:
+  - title: "10.2 事件循环详解：宏任务队列、微任务队列、process.nextTick、requestAnimationFrame"
+    slug: "volume-03/chapter-10/10.2-event-loop"
+  - title: "10.4 Node.js 运行时：libuv 架构、事件循环阶段、CommonJS、ES Module"
+    slug: "volume-03/chapter-10/10.4-nodejs"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+JavaScript 的内存管理由引擎自动完成，但“自动”不等于“不需要设计”。对象只要从根集合可达，就不能被回收。根集合通常包括当前调用栈、全局对象、闭包引用、DOM 与 JS 之间的绑定、任务队列中的回调等。内存泄漏的本质通常不是垃圾回收器失效，而是应用仍然保留了不该继续存在的引用。
+
+现代引擎通常采用分代回收：新创建对象进入新生代，存活时间较长的对象晋升到老生代。年轻对象大多很快死亡，因此新生代回收可以更频繁、更便宜；老生代回收更重，可能涉及标记、清除、整理、增量和并发步骤。前端页面中的大数组、缓存、图表数据、虚拟列表快照、未清理事件监听器和未取消异步任务，都是老生代压力的常见来源。
+
+ECMAScript 还定义了 SharedArrayBuffer 与 Atomics 相关的内存模型，用于多代理之间共享内存并进行原子同步。在浏览器中，SharedArrayBuffer 通常还要求跨源隔离响应头。大部分业务不需要手写共享内存，但只要涉及 Web Worker、音视频处理、WASM 或高性能计算，就必须理解数据竞争、原子读写和同步边界。
+
+`WeakMap`、`WeakSet`、`WeakRef` 与 `FinalizationRegistry` 是弱引用工具。它们适合做“对象存在时附加元数据”或“非关键缓存”，不适合承载业务正确性，因为垃圾回收时机不可预测，终结回调也不能保证立刻执行。
 
 ## 用法
 
-内容待补充...
+用 `WeakMap` 给 DOM 或对象挂元数据，可以避免额外字段污染对象，也能让对象不可达后自然释放：
+
+```ts
+type ElementMetrics = {
+  visibleAt: number
+  clicks: number
+}
+
+// 中文注释：WeakMap 的键不会阻止 DOM 元素被回收。
+const metricsStore = new WeakMap<Element, ElementMetrics>()
+
+/**
+ * 记录元素曝光。
+ * @param element 被观察的 DOM 元素。
+ * @returns 无返回值，只更新弱引用元数据。
+ */
+function markVisible(element: Element): void {
+  const current = metricsStore.get(element) ?? { visibleAt: Date.now(), clicks: 0 }
+  metricsStore.set(element, current)
+}
+```
+
+常见泄漏来自生命周期清理缺失。下面示例强调事件监听、定时器和 AbortController 的成对管理：
+
+```ts
+/**
+ * 绑定可释放的搜索输入监听。
+ * @param input 搜索框元素。
+ * @param onSearch 搜索回调。
+ * @returns 清理函数，组件卸载时必须调用。
+ */
+function bindSearch(input: HTMLInputElement, onSearch: (keyword: string) => void): () => void {
+  const controller = new AbortController()
+  let timer: number | undefined
+
+  input.addEventListener(
+    "input",
+    () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        // 中文注释：只保留最新输入触发的搜索，避免历史任务长期持有引用。
+        onSearch(input.value)
+      }, 200)
+    },
+    { signal: controller.signal },
+  )
+
+  return () => {
+    window.clearTimeout(timer)
+    controller.abort()
+  }
+}
+```
+
+共享内存只在确有性能需求时使用：
+
+```ts
+// 中文注释：SharedArrayBuffer 在浏览器中通常要求跨源隔离。
+const buffer = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)
+const flag = new Int32Array(buffer)
+
+// 中文注释：Atomics.store 和 Atomics.notify 用于跨 Worker 同步状态。
+Atomics.store(flag, 0, 1)
+Atomics.notify(flag, 0)
+```
 
 ## 实践
 
-内容待补充...
+排查内存问题时按现象选择工具：
+
+| 现象 | 可能原因 | 验证方式 |
+|---|---|---|
+| 页面停留越久越卡 | 定时器、监听器、订阅或缓存未释放 | Chrome Memory 堆快照对比 |
+| 路由切换后内存不降 | 组件闭包、全局 store、DOM 引用残留 | Allocation instrumentation |
+| Worker 数据传输慢 | 结构化克隆成本高 | 使用 Transferable 或共享内存对比 |
+| Node 服务 RSS 持续上升 | 大缓存、请求上下文泄漏、原生内存 | heap snapshot、`--inspect`、进程指标 |
+
+内存优化优先级应是：缩短引用生命周期，限制缓存规模，减少重复数据，再考虑弱引用或手动对象池。对象池在现代 GC 下不一定更快，反而可能让短命对象变成长命对象，增加老生代压力。
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 认为 GC 会自动解决所有泄漏 | 只要对象仍然可达，GC 就不能回收。重点是移除引用。 |
+| 把 `WeakRef` 当业务状态存储 | 弱引用随时可能失效，只适合非关键缓存。 |
+| 忽略 DOM 与 JS 的互相引用 | detached DOM tree 常来自监听器、闭包或全局数组。 |
+| 不限制缓存 | LRU、TTL、容量上限和手动清理策略比“无限 Map”更重要。 |
+| 未理解 SharedArrayBuffer 安全条件 | 浏览器中通常需要 COOP/COEP 等跨源隔离配置。 |
+
+## 参考
+
+- [ECMAScript: Memory Model](https://tc39.es/ecma262/multipage/memory-model.html)
+- [MDN: Memory management](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Memory_management)
+- [MDN: WeakMap](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap)
+- [MDN: Atomics](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics)

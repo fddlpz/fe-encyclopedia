@@ -6,24 +6,138 @@ chapter: "第 4 章 HTML 全景"
 section: "4.3"
 tags: ["语义化", "HTML5", "无障碍", "SEO"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.2 文档元数据：DOCTYPE、lang 属性、charset、Viewport Meta、Open Graph / Twitter Cards"
+    slug: "volume-02/chapter-04/4.2-metadata"
+  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
+    slug: "volume-02/chapter-04/4.4-forms"
+  - title: "4.1 HTML 发展史：HTML 2.0 → XHTML 1.0 → HTML5 → Living Standard（WHATWG）"
+    slug: "volume-02/chapter-04/4.1-html-history"
+crossRefs:
+  - title: "4.2 文档元数据：DOCTYPE、lang 属性、charset、Viewport Meta、Open Graph / Twitter Cards"
+    slug: "volume-02/chapter-04/4.2-metadata"
+  - title: "4.4 表单与交互：表单控件类型、表单验证 API、自定义验证样式、datalist、output"
+    slug: "volume-02/chapter-04/4.4-forms"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+语义化 HTML 用元素表达内容角色，而不是只表达视觉效果。浏览器、搜索引擎、屏幕阅读器、阅读模式和自动化测试都会从元素语义中获得信息。好的语义结构能减少 ARIA 和脚本补丁。
+
+| 元素 | 语义 | 使用边界 |
+|---|---|---|
+| `main` | 页面主体内容 | 一个页面通常只有一个可见 `main` |
+| `article` | 可独立分发或复用的内容 | 文章、评论、卡片、帖子 |
+| `section` | 有主题的一组内容 | 通常应有标题 |
+| `nav` | 导航链接集合 | 主导航、面包屑、目录 |
+| `aside` | 与主体间接相关的补充内容 | 侧栏、推荐、广告 |
+| `header` | 区块或页面头部 | 不等于固定顶部栏 |
+| `footer` | 区块或页面尾部 | 版权、相关链接、元信息 |
+| `figure` / `figcaption` | 自包含媒体和说明 | 图片、图表、代码片段 |
+| `time` | 机器可读时间 | 发布时间、截止日期 |
+| `details` / `summary` | 原生展开收起 | FAQ、折叠说明 |
+
+<Callout type="tip" title="语义优先级">
+能用原生元素表达的语义，不要先用 ARIA 补。ARIA 的原则是“没有 ARIA 好于错误 ARIA”。
+</Callout>
 
 ## 用法
 
-内容待补充...
+文章页可以这样组织：
+
+```html
+<body>
+  <header>
+    <nav aria-label="主导航">
+      <a href="/">首页</a>
+      <a href="/docs">文档</a>
+    </nav>
+  </header>
+
+  <main>
+    <article>
+      <header>
+        <h1>语义化 HTML 实战</h1>
+        <p>
+          发布于
+          <time datetime="2026-06-25">2026 年 6 月 25 日</time>
+        </p>
+      </header>
+
+      <section aria-labelledby="intro-title">
+        <h2 id="intro-title">为什么需要语义化</h2>
+        <p>语义化让内容结构对浏览器和辅助技术可理解。</p>
+      </section>
+
+      <figure>
+        <img src="/images/outline.png" alt="文章结构示意图" />
+        <figcaption>文章页面结构示意图</figcaption>
+      </figure>
+    </article>
+  </main>
+</body>
+```
+
+`section` 不是通用容器。没有标题、没有独立主题的布局块，使用 `div` 反而更准确。`article` 也不是所有正文区域的替代品，它强调内容可以独立存在。
+
+`details` 和 `summary` 能提供原生键盘、焦点和展开状态：
+
+```html
+<details>
+  <summary>如何重置密码？</summary>
+  <p>进入账号设置，选择“安全”，按步骤完成验证后即可重置。</p>
+</details>
+```
 
 ## 实践
 
-内容待补充...
+组件库应把语义作为 API 设计的一部分。
+
+```tsx
+type CardProps = {
+  title: string
+  href?: string
+  children: React.ReactNode
+}
+
+export function ArticleCard({ title, href, children }: CardProps) {
+  return (
+    <article>
+      <h2>
+        {href ? <a href={href}>{title}</a> : title}
+      </h2>
+      {/* 中文注释：卡片能独立呈现和链接时，用 article 比 div 更能表达内容边界。 */}
+      <p>{children}</p>
+    </article>
+  )
+}
+```
+
+审查页面结构时可以按这个顺序：
+
+1. 页面是否有清晰的 `main`。
+2. 标题层级是否从 `h1` 按结构递进。
+3. 导航区域是否有 `nav` 和可区分的 `aria-label`。
+4. 重复列表项是否可用 `article`、`li` 或更合适的元素表达。
+5. 图片是否有有效 `alt`，图表是否有 `figcaption` 或文本说明。
+6. 交互控件是否使用 `button`、`a`、`input` 等原生控件。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 为了“语义化”滥用 `section` | 文档大纲和辅助技术结构变乱 | 只有主题明确且通常有标题时使用 |
+| 用 `a` 触发非导航动作 | 键盘、右键、语义和可访问性不一致 | 动作用 `button`，导航用 `a` |
+| 用 `div onClick` 模拟按钮 | 缺少键盘和默认语义 | 使用 `button` 或完整补齐交互 |
+| 多个未命名 `nav` | 屏幕阅读器难以区分导航区域 | 使用 `aria-label` 命名 |
+| 只看视觉还原 | 页面可理解性下降 | 用 DevTools Accessibility Tree 检查 |
+
+## 参考资料
+
+- [WHATWG HTML: Sections](https://html.spec.whatwg.org/multipage/sections.html)
+- [WHATWG HTML: Grouping content](https://html.spec.whatwg.org/multipage/grouping-content.html)
+- [MDN: HTML elements reference](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements)
+- [WAI-ARIA Authoring Practices Guide](https://www.w3.org/WAI/ARIA/apg/)

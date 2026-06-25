@@ -2,9 +2,12 @@ import React from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { MDXRemote } from "next-mdx-remote/rsc"
+import { type Pluggable } from "unified"
+import remarkGfm from "remark-gfm"
+import rehypePrettyCode from "rehype-pretty-code"
+import rehypeSlug from "rehype-slug"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { getDocBySlug, getAllDocSlugs, getAdjacentDocs, getAllDocs } from "@/lib/mdx"
-import { getNavigationTree } from "@/lib/navigation"
 import { Breadcrumb } from "@/components/layout/breadcrumb"
 import { TOC } from "@/components/layout/toc"
 import { mdxComponents } from "@/components/content/mdx-components"
@@ -13,6 +16,107 @@ import { DependencyChain } from "@/components/content/dependency-chain"
 import { RelatedArticles } from "@/components/content/related-articles"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { type DocNode } from "@/types"
+
+/**
+ * 文件功能说明：
+ * 渲染单篇 MDX 文档详情页，包含正文、目录、知识图谱、依赖链、相关推荐和上下篇导航。
+ */
+
+interface DocReference {
+  title: string
+  slug: string
+}
+
+/** 代码高亮插件配置：固定深色主题，保证亮色/暗色页面中代码都具有足够对比度。 */
+const prettyCodePlugin: Pluggable = [
+  rehypePrettyCode,
+  {
+    theme: "github-dark",
+    keepBackground: false,
+  },
+]
+
+/**
+ * MDX 编译配置说明：
+ * next-mdx-remote/rsc 不会自动读取 next.config.js 中的 @next/mdx 配置，
+ * 因此表格、任务列表和代码高亮需要在运行时渲染入口显式注册。
+ */
+const mdxRemoteOptions = {
+  mdxOptions: {
+    remarkPlugins: [remarkGfm],
+    rehypePlugins: [
+      rehypeSlug,
+      prettyCodePlugin,
+    ],
+  },
+}
+
+/**
+ * 将 frontmatter 中不同格式的章节引用统一转换为可点击链接。
+ * @param ref 原始引用，兼容字符串、slug 对象和 title/slug 对象。
+ * @param allDocs 全站文档列表，用于把短 slug 解析为完整 slug。
+ * @returns 可渲染的章节引用；无法解析时返回 null。
+ */
+function normalizeDocReference(ref: unknown, allDocs: DocNode[]): DocReference | null {
+  if (!ref) return null
+
+  const rawSlug =
+    typeof ref === "string"
+      ? ref
+      : typeof ref === "object" && "slug" in ref
+        ? String((ref as { slug?: unknown }).slug || "")
+        : ""
+
+  const cleanSlug = rawSlug.replace(/\.mdx$/, "").replace(/^\/+/, "")
+  if (!cleanSlug) return null
+
+  const matchedDoc =
+    allDocs.find((doc) => doc.slug === cleanSlug) ||
+    allDocs.find((doc) => doc.slug.endsWith(`/${cleanSlug}`)) ||
+    allDocs.find((doc) => pathBasename(doc.slug) === cleanSlug)
+
+  if (matchedDoc) {
+    return {
+      title:
+        typeof ref === "object" && "title" in ref
+          ? String((ref as { title?: unknown }).title || matchedDoc.frontmatter.title)
+          : matchedDoc.frontmatter.title,
+      slug: matchedDoc.slug,
+    }
+  }
+
+  if (typeof ref === "object" && "title" in ref) {
+    return {
+      title: String((ref as { title?: unknown }).title || cleanSlug),
+      slug: cleanSlug,
+    }
+  }
+
+  return null
+}
+
+/**
+ * 获取 slug 的最后一段文件名。
+ * @param slug 文档 slug。
+ * @returns slug 最后一段。
+ */
+function pathBasename(slug: string): string {
+  const parts = slug.split("/")
+  return parts[parts.length - 1] || slug
+}
+
+/**
+ * 批量归一化引用数组，并去除无法解析的条目。
+ * @param refs frontmatter 中的引用数组。
+ * @param allDocs 全站文档列表。
+ * @returns 可渲染引用数组。
+ */
+function normalizeDocReferences(refs: unknown[] | undefined, allDocs: DocNode[]): DocReference[] {
+  return (refs || [])
+    .map((ref) => normalizeDocReference(ref, allDocs))
+    .filter((ref): ref is DocReference => ref !== null)
+}
 
 export async function generateStaticParams() {
   const slugs = getAllDocSlugs()
@@ -36,6 +140,10 @@ export default function DocPage({ params }: { params: { slug: string[] } }) {
 
   const { frontmatter, content } = doc
   const { prev, next } = getAdjacentDocs(slug)
+  const allDocNodes = getAllDocs()
+  const prerequisiteReferences = normalizeDocReferences(frontmatter.prerequisites as unknown[] | undefined, allDocNodes)
+  const relatedReferences = normalizeDocReferences(frontmatter.related as unknown[] | undefined, allDocNodes)
+  const crossReferences = normalizeDocReferences(frontmatter.crossRefs as unknown[] | undefined, allDocNodes)
 
   // Build breadcrumb
   const breadcrumbItems = [
@@ -51,13 +159,13 @@ export default function DocPage({ params }: { params: { slug: string[] } }) {
     group: "current" as const,
     slug,
   }
-  const relatedNodes = (frontmatter.related || []).map((r) => ({
+  const relatedNodes = relatedReferences.map((r) => ({
     id: r.slug,
     title: r.title,
     group: "related" as const,
     slug: r.slug,
   }))
-  const crossNodes = (frontmatter.crossRefs || []).map((r) => ({
+  const crossNodes = crossReferences.map((r) => ({
     id: r.slug,
     title: r.title,
     group: "cross" as const,
@@ -70,7 +178,7 @@ export default function DocPage({ params }: { params: { slug: string[] } }) {
   ]
 
   // All docs for related articles
-  const allDocs = getAllDocs().map((d) => ({
+  const allDocs = allDocNodes.map((d) => ({
     slug: d.slug,
     title: d.frontmatter.title,
     description: d.frontmatter.description,
@@ -98,7 +206,7 @@ export default function DocPage({ params }: { params: { slug: string[] } }) {
         </div>
 
         <div className="prose-custom">
-          <MDXRemote source={content} components={mdxComponents} />
+          <MDXRemote source={content} components={mdxComponents} options={mdxRemoteOptions} />
         </div>
 
         <Separator className="my-8" />
@@ -107,8 +215,8 @@ export default function DocPage({ params }: { params: { slug: string[] } }) {
         <KnowledgeGraph nodes={graphNodes} links={graphLinks} />
 
         <DependencyChain
-          prerequisites={frontmatter.prerequisites || []}
-          nextSteps={frontmatter.related?.slice(0, 3)}
+          prerequisites={prerequisiteReferences}
+          nextSteps={relatedReferences.slice(0, 3)}
         />
 
         <RelatedArticles

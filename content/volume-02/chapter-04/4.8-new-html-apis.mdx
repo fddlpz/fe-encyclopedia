@@ -6,24 +6,149 @@ chapter: "第 4 章 HTML 全景"
 section: "4.8"
 tags: ["Popover", "Dialog", "Anchor Positioning", "新API"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots"
+    slug: "volume-02/chapter-04/4.7-web-components"
+  - title: "4.6 可访问性（A11y）：WAI-ARIA、屏幕阅读器、键盘导航、色彩对比度、WCAG"
+    slug: "volume-02/chapter-04/4.6-a11y"
+crossRefs:
+  - title: "4.7 Web Components：Custom Elements、Shadow DOM、HTML Templates、Slots"
+    slug: "volume-02/chapter-04/4.7-web-components"
+  - title: "5.1 CSS 基础模型：盒模型、BFC、包含块、层叠上下文"
+    slug: "volume-02/chapter-05/5.1-box-model"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+近年来浏览器把许多常见交互下沉为原生能力，例如 `dialog`、Popover API、`details/summary` 和 CSS Anchor Positioning。它们的共同方向是减少脚本模拟控件，提供更一致的焦点、顶层层叠、关闭行为和可访问性基础。
+
+| 能力 | 类型 | 适合场景 |
+|---|---|---|
+| `dialog` | HTML 元素 | 模态框、确认框、复杂表单弹窗 |
+| Popover API | HTML 属性和 DOM API | 菜单、提示面板、轻量浮层 |
+| `details/summary` | HTML 元素 | FAQ、折叠内容 |
+| Anchor Positioning | CSS 布局能力 | 把浮层定位到触发元素附近 |
+
+Anchor Positioning 严格来说属于 CSS，不是 HTML API；它经常和 Popover/Dialog 组合使用，所以放在本节一起讨论。
+
+<Callout type="info" title="原生浮层的价值">
+原生 `dialog` 和 Popover 会进入浏览器顶层（top layer）相关机制，能避免很多 z-index 堆叠问题，但仍需要开发者处理业务状态、动画和兼容性。
+</Callout>
 
 ## 用法
 
-内容待补充...
+`dialog` 的基础用法：
+
+```html
+<button id="open-settings" type="button">打开设置</button>
+
+<dialog id="settings-dialog">
+  <form method="dialog">
+    <h2>设置</h2>
+    <label>
+      昵称
+      <input name="nickname" />
+    </label>
+    <button value="cancel">取消</button>
+    <button value="confirm">确认</button>
+  </form>
+</dialog>
+```
+
+```ts
+const button = document.querySelector<HTMLButtonElement>("#open-settings")
+const dialog = document.querySelector<HTMLDialogElement>("#settings-dialog")
+
+button?.addEventListener("click", () => {
+  // 中文注释：showModal 会创建模态对话框并让背景内容 inert。
+  dialog?.showModal()
+})
+```
+
+Popover 的声明式写法：
+
+```html
+<button popovertarget="user-menu" type="button">用户菜单</button>
+
+<div id="user-menu" popover>
+  <button type="button">个人资料</button>
+  <button type="button">退出登录</button>
+</div>
+```
+
+`details/summary` 适合不需要复杂状态管理的折叠内容：
+
+```html
+<details>
+  <summary>配送范围</summary>
+  <p>当前支持中国大陆主要城市。</p>
+</details>
+```
+
+Anchor Positioning 示例：
+
+```css
+.trigger {
+  anchor-name: --menu-trigger;
+}
+
+.menu {
+  position: absolute;
+  position-anchor: --menu-trigger;
+  position-area: bottom start;
+}
+```
 
 ## 实践
 
-内容待补充...
+选择原生能力时可以按需求判断：
+
+| 需求 | 推荐 |
+|---|---|
+| 阻塞用户继续操作，必须处理 | `dialog.showModal()` |
+| 轻量菜单或提示，可点击外部关闭 | Popover |
+| 静态内容展开收起 | `details/summary` |
+| 浮层跟随触发元素定位 | Popover + Anchor Positioning |
+| 老浏览器必须完整支持 | 原生能力 + 渐进增强或 polyfill |
+
+渐进增强示例：
+
+```ts
+function supportsPopover() {
+  // 中文注释：通过原型能力检测决定是否启用原生 Popover。
+  return "popover" in HTMLElement.prototype
+}
+
+if (!supportsPopover()) {
+  document.documentElement.classList.add("no-popover")
+}
+```
+
+设计系统接入新 API 时，不应只看单浏览器演示。需要检查：
+
+1. 键盘操作是否符合预期。
+2. 焦点打开和关闭后是否正确移动或归还。
+3. 层叠、滚动、视口边界和移动端表现。
+4. 与已有浮层库、Portal、Focus Trap 是否冲突。
+5. 浏览器兼容性和降级策略。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 用 Popover 替代所有弹窗 | Popover 不等于模态对话框 | 强制决策使用 `dialog` |
+| `dialog` 内缺少标题 | 辅助技术难以理解弹窗目的 | 提供标题并正确聚焦 |
+| `details` 用来承载复杂应用状态 | 原生开合状态难和复杂状态同步 | 简单内容用原生，复杂场景封装 |
+| Anchor Positioning 当作 HTML 功能 | 实际兼容性跟 CSS 实现相关 | 单独检查 CSS 支持 |
+| 忽略降级 | 部分用户无法打开菜单或弹窗 | 做能力检测和兜底样式 |
+
+## 参考资料
+
+- [WHATWG HTML: The dialog element](https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element)
+- [WHATWG HTML: Popover attribute](https://html.spec.whatwg.org/multipage/popover.html)
+- [MDN: Popover API](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API)
+- [MDN: position-anchor](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/position-anchor)
+- [MDN: details element](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/details)

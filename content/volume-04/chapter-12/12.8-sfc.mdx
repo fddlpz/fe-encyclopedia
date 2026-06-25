@@ -5,25 +5,149 @@ volume: "卷四：框架与状态管理"
 chapter: "第 12 章 Vue.js 原理与生态"
 section: "12.8"
 tags: ["SFC", "script setup", "scoped", "宏"]
-difficulty: "基础"
+difficulty: "进阶"
+status: "框架重构"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "12.7 Vue 指令系统：内置指令、自定义指令、v-model 实现"
+    slug: "volume-04/chapter-12/12.7-directives"
+  - title: "12.9 Vue 路由与状态管理：Vue Router 4、Pinia、Vuex 4"
+    slug: "volume-04/chapter-12/12.9-router-state"
+  - title: "12.6 Vue 渲染机制：VNode、Diff 算法、异步更新队列、Teleport/Suspense"
+    slug: "volume-04/chapter-12/12.6-vue-rendering"
+crossRefs:
+  - title: "12.7 Vue 指令系统：内置指令、自定义指令、v-model 实现"
+    slug: "volume-04/chapter-12/12.7-directives"
+  - title: "12.9 Vue 路由与状态管理：Vue Router 4、Pinia、Vuex 4"
+    slug: "volume-04/chapter-12/12.9-router-state"
+lastUpdated: "2026-06-26"
 ---
 
-## 原理
+## 章节定位
 
-内容待补充...
+Vue SFC：&lt;script setup&gt;、&lt;style scoped&gt;、CSS v-bind()、宏 不再只按“是什么、怎么用”展开，而是放回「第 12 章 Vue.js 原理与生态」的知识链路中理解：围绕响应式依赖、模板编译、组件更新和组合式逻辑建立可解释的开发模型。
 
-## 用法
+> **本节要解决的真实问题**：当项目里遇到 Vue SFC、Vue、SFC、&lt;script 相关设计、选型、接入或排障时，能说清楚边界、取舍、验证方式和失败后的回退策略。
 
-内容待补充...
+### 学习目标
 
-## 实践
+| 层次 | 学完后应该能做到 |
+|---|---|
+| 概念定位 | 解释 Vue SFC 在 Vue 应用 中解决的真实问题 |
+| 机制理解 | 拆解 Vue、SFC 与失败路径 |
+| 工程判断 | 为 &amp;lt;script 选择可验证、可回退的落地方案 |
+| 验证闭环 | 围绕“依赖是否精确”建立判断标准 |
 
-内容待补充...
+## 知识地图
 
-## 陷阱
+Vue 把状态与视图之间的依赖关系显式收集起来，再通过编译优化和更新队列降低手写 DOM 更新成本。
 
-内容待补充...
+| 层级 | 本节关注点 | 判断证据 |
+|---|---|---|
+| 问题入口 | Vue SFC、Vue、SFC 会在什么业务场景中暴露 | 复杂表单、列表详情联动 |
+| 运行机制 | 依赖是否精确；副作用是否可清理；模板是否可优化 | Vue DevTools、组件更新高亮 |
+| 工程约束 | ref/reactive 选择、computed/watch 边界、Composables 抽象、Pinia 与路由状态 | 兼容性、性能、安全、维护成本和回退方案 |
+| 关联知识 | 与同章和跨章内容形成可追踪链路 | 关系链接、示例代码、测试和线上数据 |
+
+### 延展关系
+
+- 同章延伸：[12.7 Vue 指令系统：内置指令、自定义指令、v-model 实现](/volume-04/chapter-12/12.7-directives)
+- 同章延伸：[12.9 Vue 路由与状态管理：Vue Router 4、Pinia、Vuex 4](/volume-04/chapter-12/12.9-router-state)
+- 同章延伸：[12.6 Vue 渲染机制：VNode、Diff 算法、异步更新队列、Teleport/Suspense](/volume-04/chapter-12/12.6-vue-rendering)
+- 交叉参照：[12.7 Vue 指令系统：内置指令、自定义指令、v-model 实现](/volume-04/chapter-12/12.7-directives)
+- 交叉参照：[12.9 Vue 路由与状态管理：Vue Router 4、Pinia、Vuex 4](/volume-04/chapter-12/12.9-router-state)
+
+## 核心机制
+
+这一节建议沿着“术语 -> 机制 -> 证据”的顺序阅读。先不要急着背 API，先确认每个概念在系统里承担什么职责，以及它失败时会出现什么现象。
+
+| 主题 | 需要理解的机制 | 可观察证据 |
+|---|---|---|
+| Vue SFC | Vue 通过响应式依赖收集、模板编译和更新队列把状态变化同步到视图。 | 用 Vue DevTools 检查依赖、更新次数、组件边界和 hydration mismatch。 |
+| Vue | 围绕“副作用是否可清理”拆解概念边界、运行机制和失败路径。 | 组件更新高亮 |
+| SFC | 围绕“模板是否可优化”拆解概念边界、运行机制和失败路径。 | watch 触发次数 |
+| &lt;script | 围绕“组件职责是否过重”拆解概念边界、运行机制和失败路径。 | bundle 分析 |
+
+<Callout type="tip" title="阅读方法">
+读这一节时，建议为每个关键词补一个“最小复现场景”和一个“线上验证信号”。能被复现和验证的知识，才真正能进入工程判断。
+</Callout>
+
+## 工程决策
+
+Vue SFC：&lt;script setup&gt;、&lt;style scoped&gt;、CSS v-bind()、宏 的价值在于帮助你做判断，而不是增加术语库存。遇到真实项目时，可以按下面的决策表检查。
+
+| 决策维度 | 应该如何判断 | 验证方式 |
+|---|---|---|
+| ref/reactive 选择 | 派生状态优先 computed，副作用用 watch，跨页面状态再引入 store。 | 用 Vue DevTools 检查依赖、更新次数、组件边界和 hydration mismatch。 |
+| computed/watch 边界 | 在“列表详情联动”场景下判断收益、成本、失败路径和回退策略。 | 组件更新高亮 |
+| Composables 抽象 | 在“组件库封装”场景下判断收益、成本、失败路径和回退策略。 | watch 触发次数 |
+| Pinia 与路由状态 | 在“Nuxt 页面渲染”场景下判断收益、成本、失败路径和回退策略。 | bundle 分析 |
+
+## 实战路径
+
+推荐按四步推进：
+
+1. **界定场景**：明确当前是新功能接入、旧系统治理、性能优化、安全加固还是线上排障。
+2. **建立样例**：用最小代码或配置复现 Vue SFC 的核心行为，不直接在完整业务里猜测。
+3. **接入约束**：把 ref/reactive 选择、computed/watch 边界、Composables 抽象 写进方案，说明不满足时如何降级。
+4. **验证沉淀**：用 Vue DevTools、组件更新高亮、watch 触发次数 形成证据，并把结论回写到团队文档。
+
+```ts
+type ChapterDecision = {
+  objective: string
+  constraints: string[]
+  signals: string[]
+  rollback: string
+}
+
+/**
+ * 生成本节主题的落地决策记录。
+ * @param owner 负责验证和维护该方案的角色或小组。
+ * @returns 可写入技术方案或评审记录的决策对象。
+ */
+function createDecisionRecord(owner: string): ChapterDecision {
+  return {
+    objective: "<script setup>、<style scoped>、CSS v-bind()、宏",
+    constraints: ["Vue SFC","Vue","SFC","<script"],
+    signals: ["Vue DevTools","组件更新高亮","watch 触发次数"],
+    // 中文注释：回退策略必须在接入前定义，避免上线后只能被动救火。
+    rollback: `由 ${owner} 负责准备降级开关、兼容方案和验证清单`,
+  }
+}
+
+console.table(createDecisionRecord("frontend"))
+```
+
+## 诊断与验证
+
+| 现象 | 定位动作 | 判断完成的证据 |
+|---|---|---|
+| 行为与预期不一致 | 回到最小样例，逐步加入真实数据、环境和配置 | 能明确指出差异来自输入、运行时、配置还是依赖 |
+| 性能或稳定性退化 | 记录基线，再观察 Vue DevTools、组件更新高亮、watch 触发次数 | 指标回到预算内，并且关键路径有回归测试 |
+| 团队理解不一致 | 把术语、边界、反例和回退策略写进评审记录 | 新成员可以按同一清单复现和验证 |
+
+## 常见误区
+
+| 误区 | 更可靠的处理方式 |
+|---|---|
+| 深度 watch 大对象会让性能和可预测性同时变差。 | 先用最小场景复现，再决定是否升级方案。 |
+| 解构 reactive 后丢失响应性 | 先用最小场景复现，再决定是否升级方案。 |
+| 滥用深度 watch | 先用最小场景复现，再决定是否升级方案。 |
+| 把 Vue 2 与 Vue 3 的限制混为一谈 | 先用最小场景复现，再决定是否升级方案。 |
+
+## 后续补写清单
+
+为了把本节从“框架完整”继续推进到“内容深写”，后续每次补充可以按下面顺序加料：
+
+- 补一张机制图：画清楚 Vue SFC、Vue、SFC、&lt;script 之间的数据流、控制流或依赖关系。
+- 补一个真实案例：说明问题背景、错误方案、修正方案和上线后的验证指标。
+- 补一段最小可运行代码：包含参数说明、返回值说明、异常路径和中文注释。
+- 补一组对比表：比较不同方案在性能、复杂度、兼容性和维护成本上的差异。
+- 补一个排障清单：把 DevTools、日志、测试、监控或安全扫描的操作步骤写成可执行步骤。
+
+## 参考资料
+
+- [https://vuejs.org/guide/introduction.html](https://vuejs.org/guide/introduction.html)
+- [https://vuejs.org/guide/extras/reactivity-in-depth.html](https://vuejs.org/guide/extras/reactivity-in-depth.html)
+- [https://vuejs.org/guide/extras/rendering-mechanism.html](https://vuejs.org/guide/extras/rendering-mechanism.html)
+- [https://vuejs.org/api/sfc-script-setup.html](https://vuejs.org/api/sfc-script-setup.html)

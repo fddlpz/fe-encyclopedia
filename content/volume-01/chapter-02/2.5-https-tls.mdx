@@ -6,24 +6,121 @@ chapter: "第 2 章 计算机网络协议"
 section: "2.5"
 tags: ["HTTPS", "TLS", "SSL", "加密", "证书"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3"
+    slug: "volume-01/chapter-02/2.4-http-evolution"
+  - title: "2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析"
+    slug: "volume-01/chapter-02/2.6-dns"
+  - title: "2.3 UDP 协议：特点、应用场景、WebRTC 中的 UDP"
+    slug: "volume-01/chapter-02/2.3-udp"
+crossRefs:
+  - title: "2.4 HTTP 协议演进：HTTP/0.9 → HTTP/1.0 → HTTP/1.1 → HTTP/2 → HTTP/3"
+    slug: "volume-01/chapter-02/2.4-http-evolution"
+  - title: "2.6 DNS 解析：递归查询与迭代查询、DNS 记录类型、DNS 缓存、DNS 预解析"
+    slug: "volume-01/chapter-02/2.6-dns"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+HTTPS 是 HTTP over TLS。HTTP 负责请求和响应语义，TLS 负责机密性、完整性和身份认证。TLS 不是单纯“给数据加密”，它要解决三类问题：
+
+- **机密性**：中间人不能读取明文内容。
+- **完整性**：传输中的数据被篡改时能够被发现。
+- **身份认证**：客户端能确认自己连接的是目标站点，而不是伪造站点。
+
+TLS 同时使用非对称密码和对称密码。非对称密码主要用于身份认证和密钥协商，对称密码用于大量应用数据加密，因为对称加密速度更适合持续传输。
+
+```text
+浏览器连接 https://example.com
+  -> ClientHello：声明支持的 TLS 版本、密码套件、随机数、扩展
+  -> ServerHello：选择 TLS 参数，返回证书链
+  -> 浏览器验证证书：域名、有效期、签发链、吊销状态
+  -> 双方通过密钥交换得到会话密钥
+  -> 后续 HTTP 数据用会话密钥加密传输
+```
+
+TLS 1.3 相比 TLS 1.2 简化了握手，移除了多种旧密码套件，常规完整握手可以在更少往返内完成。TLS 1.3 的 0-RTT 只适用于恢复会话，并存在重放风险，因此只适合幂等请求或服务端明确可接受的场景。
+
+<Callout type="danger" title="不要继续使用 SSL 作为技术方案名称">
+日常口语里仍有人说 SSL 证书，但现代 Web 使用的是 TLS。SSL 2.0/3.0 已经属于历史协议，不应作为新系统安全配置目标。
+</Callout>
 
 ## 用法
 
-内容待补充...
+前端排查 HTTPS 问题时，重点看证书、协议版本、混合内容和安全响应头。
+
+| 问题 | 典型表现 | 排查方向 |
+|---|---|---|
+| 证书域名不匹配 | 浏览器提示不安全 | 检查 SAN 是否包含当前域名 |
+| 证书过期 | 全站 HTTPS 失败 | 检查证书有效期和自动续签 |
+| 证书链不完整 | 部分客户端失败 | 检查中间证书是否正确配置 |
+| 混合内容 | HTTPS 页面加载 HTTP 资源被拦截 | 将图片、脚本、接口全部迁移到 HTTPS |
+| TLS 版本过旧 | 新浏览器或安全扫描失败 | 服务端禁用旧协议和弱套件 |
+| HSTS 配置错误 | 用户无法回退到 HTTP | 先小范围验证，再增加 `max-age` |
+
+命令行可以直接查看证书和握手信息：
+
+```bash
+# 查看证书链、TLS 版本和握手细节
+curl -vI https://example.com/
+```
+
+常见安全响应头：
+
+```http
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+Content-Security-Policy: upgrade-insecure-requests
+```
+
+`Strict-Transport-Security` 会让浏览器在后续访问中强制使用 HTTPS。它适合已经稳定完成 HTTPS 改造的域名，不适合证书和子域名还没有治理清楚的站点直接长时间开启。
 
 ## 实践
 
-内容待补充...
+线上 HTTPS 治理可以按以下顺序推进：
+
+1. 先盘点所有入口域名、静态资源域名、API 域名和第三方资源。
+2. 为每个域名配置证书，确保证书链完整且续签自动化。
+3. 把页面内所有 `http://` 资源改成 `https://` 或协议相对地址。
+4. 在测试环境启用 HSTS 短时间配置，确认没有子域名误伤。
+5. 逐步增加 HSTS `max-age`，必要时再考虑预加载列表。
+6. 用监控覆盖证书有效期、握手错误率、TLS 版本分布和混合内容。
+
+前端构建中可以加入简单的混合内容检查。例如扫描产物中硬编码的 HTTP 资源：
+
+```ts
+import { readFileSync } from "node:fs"
+
+const html = readFileSync("dist/index.html", "utf8")
+
+// 中文注释：阻止 HTTPS 页面继续引用明文 HTTP 资源。
+if (/src="http:\/\//.test(html) || /href="http:\/\//.test(html)) {
+  throw new Error("发现明文 HTTP 资源，请改为 HTTPS")
+}
+```
+
+对登录、支付、后台管理这类敏感页面，还要把 HTTPS 和 Cookie 策略一起看：
+
+```http
+Set-Cookie: sid=...; Path=/; HttpOnly; Secure; SameSite=Lax
+```
+
+`Secure` 确保 Cookie 只通过 HTTPS 发送，`HttpOnly` 降低脚本读取 Cookie 的风险，`SameSite` 降低跨站请求携带 Cookie 的概率。
 
 ## 陷阱
 
-内容待补充...
+| 常见误区 | 风险 | 建议 |
+|---|---|---|
+| 认为有证书就等于安全 | 证书只解决身份和加密的一部分问题 | 同时治理 Cookie、CSP、依赖和服务端权限 |
+| 直接开启长时间 HSTS | 子域名未配置 HTTPS 时会被浏览器强制升级导致不可访问 | 先短 `max-age` 灰度 |
+| 忽略证书链 | 某些客户端缺少中间证书缓存会失败 | 服务端返回完整链 |
+| 对所有请求启用 0-RTT | 0-RTT 数据存在重放风险 | 只允许幂等请求或关闭 0-RTT |
+| 混合内容只查脚本 | 图片、字体、接口、iframe 都可能触发问题 | 扫描 HTML、CSS 和运行时请求 |
+
+## 参考资料
+
+- [RFC 8446: TLS 1.3](https://datatracker.ietf.org/doc/html/rfc8446)
+- [RFC 5246: TLS 1.2](https://datatracker.ietf.org/doc/html/rfc5246)
+- [RFC 9110: HTTP Semantics](https://datatracker.ietf.org/doc/html/rfc9110)

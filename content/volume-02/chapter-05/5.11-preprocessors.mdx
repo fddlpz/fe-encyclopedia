@@ -6,24 +6,124 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.11"
 tags: ["Sass", "SCSS", "Less", "预处理器"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
+    slug: "volume-02/chapter-05/5.10-css-architecture"
+  - title: "5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View Transitions"
+    slug: "volume-02/chapter-05/5.12-css-new-features"
+  - title: "5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path"
+    slug: "volume-02/chapter-05/5.9-filter-blend"
+crossRefs:
+  - title: "5.10 CSS 架构方法论：OOCSS、BEM、SMACSS、ITCSS、Atomic CSS、CSS Modules、CSS-in-JS"
+    slug: "volume-02/chapter-05/5.10-css-architecture"
+  - title: "5.12 CSS 新特性：:has()、@layer、@scope、@property、Scroll-driven Animations、View Transitions"
+    slug: "volume-02/chapter-05/5.12-css-new-features"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+CSS 预处理器在浏览器执行前把扩展语法编译为标准 CSS。Sass/SCSS、Less、Stylus 的共同价值是变量、嵌套、混入、函数和模块化。随着 CSS 自定义属性、原生嵌套、`@layer`、`color-mix()` 等能力成熟，预处理器不再是现代 CSS 的必选项，但在大型存量项目和设计系统编译阶段仍然常见。
+
+| 工具 | 语法特点 | 现代使用建议 |
+|---|---|---|
+| Sass/SCSS | 生态成熟，Dart Sass 是主流实现 | 新项目优先 `@use`/`@forward`，避免旧 `@import` |
+| Less | 与 Ant Design 等生态历史关联强 | 适合维护既有 Less 变量体系 |
+| Stylus | 语法灵活、可省略符号 | 新项目谨慎使用，团队一致性成本较高 |
+
+预处理器变量是编译期值，CSS 自定义属性是运行时值。主题、暗色模式和用户动态配置通常应使用 CSS 自定义属性；静态计算、设计 token 派生和批量生成工具类可以放在预处理阶段。
 
 ## 用法
 
-内容待补充...
+Sass 模块化：
+
+```scss
+// _tokens.scss
+$space-4: 16px;
+$color-primary: #2563eb;
+
+// _button.scss
+@use "tokens";
+
+.button {
+  // 中文注释：Sass 变量在构建时展开，不会进入浏览器运行时
+  padding-inline: tokens.$space-4;
+  background: tokens.$color-primary;
+}
+```
+
+Sass mixin 适合封装重复结构：
+
+```scss
+@mixin focus-ring($color) {
+  outline: 2px solid $color;
+  outline-offset: 2px;
+}
+
+.button:focus-visible {
+  // 中文注释：复用焦点样式，保持键盘可访问性一致
+  @include focus-ring(#2563eb);
+}
+```
+
+Less 变量和 mixin：
+
+```less
+@radius-md: 8px;
+@brand-color: #2563eb;
+
+.card() {
+  border-radius: @radius-md;
+  border: 1px solid fade(@brand-color, 24%);
+}
+
+.article-card {
+  // 中文注释：Less mixin 会在编译阶段展开为普通 CSS
+  .card();
+}
+```
 
 ## 实践
 
-内容待补充...
+预处理器的工程边界应写清楚：
+
+1. 禁止过深嵌套，推荐不超过 2 到 3 层，避免生成高特殊性选择器。
+2. 设计 token 先定义来源，再决定哪些编译为静态值，哪些导出为 CSS 自定义属性。
+3. 组件库应生成 source map，便于线上定位样式来源。
+4. 不用预处理器模拟已有原生能力，例如过度包装 `@layer`、自定义属性和原生嵌套。
+
+把 token 同时输出给 CSS 和 JS 时，可以维护单一源数据，再生成目标产物：
+
+```ts
+type DesignToken = {
+  name: string
+  value: string
+}
+
+const spacingTokens: DesignToken[] = [
+  { name: "space-4", value: "16px" },
+  { name: "space-6", value: "24px" },
+]
+
+// 中文注释：构建脚本可把 token 转成 SCSS 变量、CSS 变量或 JSON
+console.table(spacingTokens)
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 把预处理器变量当运行时主题变量 | 主题切换使用 CSS 自定义属性 |
+| 嵌套过深 | 拆分组件或显式写 BEM/局部类 |
+| 继续使用 Sass `@import` | 新代码迁移到 `@use` 和 `@forward` |
+| mixin 生成大量重复 CSS | 只封装结构性规则，简单值优先使用变量 |
+| 工具链隐藏真实 CSS | 开启 source map，并在构建产物中检查重复和体积 |
+
+## 参考资料
+
+- [Sass documentation](https://sass-lang.com/documentation/)
+- [Sass: @use](https://sass-lang.com/documentation/at-rules/use/)
+- [Less documentation](https://lesscss.org/)
+- [Stylus documentation](https://stylus-lang.com/)

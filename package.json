@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "generate-index": "tsx scripts/generate-index.ts"
+    "generate-index": "tsx scripts/generate-index.ts",
+    "reframe-content": "node scripts/reframe-content-framework.js"
   },
   "dependencies": {
     "@mdx-js/loader": "^3.0.1",

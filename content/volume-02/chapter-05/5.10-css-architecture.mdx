@@ -6,24 +6,140 @@ chapter: "第 5 章 CSS 完全参考"
 section: "5.10"
 tags: ["BEM", "Atomic CSS", "CSS-in-JS", "架构"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path"
+    slug: "volume-02/chapter-05/5.9-filter-blend"
+  - title: "5.11 CSS 预处理器：Sass/SCSS、Less、Stylus"
+    slug: "volume-02/chapter-05/5.11-preprocessors"
+  - title: "5.8 变换与动画：transform、transition、@keyframes、FLIP、Web Animations API"
+    slug: "volume-02/chapter-05/5.8-transform-animation"
+crossRefs:
+  - title: "5.9 滤镜与混合模式：filter、backdrop-filter、mix-blend-mode、Mask、Clip-path"
+    slug: "volume-02/chapter-05/5.9-filter-blend"
+  - title: "5.11 CSS 预处理器：Sass/SCSS、Less、Stylus"
+    slug: "volume-02/chapter-05/5.11-preprocessors"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+CSS 架构解决的不是“怎么写一个样式”，而是“多人长期维护大量样式时，如何控制作用域、层叠、复用和删除成本”。常见方法论关注点不同：
+
+| 方法 | 核心思想 | 适合场景 |
+|---|---|---|
+| OOCSS | 结构和皮肤分离，容器和内容分离 | 早期大规模复用组件 |
+| BEM | 块、元素、修饰符命名约束 | 全局 CSS、跨框架项目 |
+| SMACSS | 按 base/layout/module/state/theme 分类 | 传统多页面站点 |
+| ITCSS | 按影响范围和特殊性分层 | 大型样式库、设计系统 |
+| Atomic CSS | 用低粒度工具类组合样式 | 快速迭代、一致 token |
+| CSS Modules | 构建时生成局部类名 | React/Vue/Svelte 组件化 |
+| CSS-in-JS | 样式与组件状态、主题和运行时绑定 | 动态主题、组件库、SSR 场景需谨慎 |
+
+架构的关键指标是可预测性。选择器特殊性、导入顺序、全局副作用和未使用 CSS 都应可解释、可检查、可删除。
 
 ## 用法
 
-内容待补充...
+BEM 适合没有局部作用域的全局 CSS：
+
+```css
+.article-card {
+  padding: 16px;
+}
+
+.article-card__title {
+  font-size: 1rem;
+}
+
+.article-card--featured {
+  /* 中文注释：修饰符只表达状态或变体，不改变组件所属关系 */
+  border-color: var(--color-accent);
+}
+```
+
+`@layer` 可以为架构分层：
+
+```css
+@layer reset, tokens, base, components, utilities;
+
+@layer tokens {
+  :root {
+    --space-4: 16px;
+  }
+}
+
+@layer components {
+  .button {
+    padding-inline: var(--space-4);
+  }
+}
+
+@layer utilities {
+  .hidden {
+    /* 中文注释：工具层排在最后，可以明确覆盖组件层 */
+    display: none;
+  }
+}
+```
+
+CSS Modules 把类名局部化：
+
+```tsx
+import styles from "./ArticleCard.module.css"
+
+type ArticleCardProps = {
+  title: string
+}
+
+export function ArticleCard({ title }: ArticleCardProps) {
+  // 中文注释：styles.title 会被构建工具映射为唯一类名，减少全局冲突
+  return <article className={styles.card}>{title}</article>
+}
+```
+
+Atomic CSS 依赖统一 token 和约束，而不是随意堆类：
+
+```html
+<!-- 中文注释：工具类适合表达稳定 token，不适合塞入一次性魔法数值 -->
+<button class="inline-flex items-center gap-2 rounded px-4 py-2 font-medium">
+  保存
+</button>
+```
 
 ## 实践
 
-内容待补充...
+制定 CSS 架构时，建议明确五个约束：
+
+1. 全局样式只放 reset、基础元素、主题变量和少量工具类。
+2. 组件样式默认局部化，禁止跨组件深层选择。
+3. 状态样式有统一入口，例如 ARIA、data 属性或组件状态类。
+4. 设计 token 不直接散落在业务 CSS 中。
+5. 删除组件时能同步删除样式，不留下死代码。
+
+大型项目常用组合是：`@layer` 管理全局顺序，CSS Modules 或组件作用域控制局部样式，工具类处理常用布局和间距，设计 token 管理颜色、字号、圆角和层级。
+
+```css
+.tabs [aria-selected="true"] {
+  /* 中文注释：用语义状态驱动样式，避免再维护一份 selected 类 */
+  color: var(--color-accent);
+  border-block-end-color: currentColor;
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| 方法论混用但无边界 | 明确每类样式的归属和覆盖顺序 |
+| 选择器过深 | 控制在组件局部，必要时拆分组件 |
+| token 和魔法值混杂 | 把颜色、间距、字号、z-index 抽成命名 token |
+| CSS-in-JS 运行时成本不可控 | 关注 SSR、缓存、样式注入顺序和首屏性能 |
+| Atomic CSS 缺少设计约束 | 限制任意值，围绕设计 token 建立规则 |
+
+## 参考资料
+
+- [MDN: Cascade layers](https://developer.mozilla.org/en-US/docs/Web/CSS/@layer)
+- [MDN: CSS specificity](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_cascade/Specificity)
+- [CSS Modules documentation](https://github.com/css-modules/css-modules)
+- [BEM methodology](https://getbem.com/)

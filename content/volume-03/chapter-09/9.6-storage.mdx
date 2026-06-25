@@ -6,24 +6,137 @@ chapter: "第 9 章 DOM 与 BOM"
 section: "9.6"
 tags: ["Storage", "IndexedDB", "Cache API", "OPFS"]
 difficulty: "基础"
+status: "已完成"
 prerequisites: []
-related: []
-crossRefs: []
-lastUpdated: "2026-04-24"
+related:
+  - title: "9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch"
+    slug: "volume-03/chapter-09/9.5-script-loading"
+  - title: "9.7 网络请求 API：XMLHttpRequest、fetch、WebSocket、SSE、Beacon API"
+    slug: "volume-03/chapter-09/9.7-network-api"
+  - title: "9.4 视口与几何：CSS 像素 vs 设备像素、DPR、getBoundingClientRect、IntersectionObserver"
+    slug: "volume-03/chapter-09/9.4-viewport"
+crossRefs:
+  - title: "9.5 脚本执行与解析阻塞：async/defer/module、预加载扫描器、preload/prefetch"
+    slug: "volume-03/chapter-09/9.5-script-loading"
+  - title: "9.7 网络请求 API：XMLHttpRequest、fetch、WebSocket、SSE、Beacon API"
+    slug: "volume-03/chapter-09/9.7-network-api"
+lastUpdated: "2026-06-25"
 ---
 
 ## 原理
 
-内容待补充...
+浏览器存储按能力分层：
+
+| API | 特点 | 适合场景 |
+|---|---|---|
+| `localStorage` | 同步、字符串、容量小 | 少量偏好设置 |
+| `sessionStorage` | 标签页会话级 | 临时表单状态 |
+| IndexedDB | 异步、事务、结构化克隆 | 大量结构化数据 |
+| Cache API | Request/Response 缓存 | PWA、离线资源、Service Worker |
+| OPFS | Origin 私有文件系统 | 大文件、编辑器、二进制工作区 |
+
+存储受同源策略、浏览器配额、隐私模式、分区存储和清理策略影响。浏览器可能在空间不足时清理 best-effort 数据，关键数据需要后端持久化或请求 persistent storage。
 
 ## 用法
 
-内容待补充...
+少量偏好可以用 localStorage，但要处理异常：
+
+```ts
+function saveTheme(theme: "light" | "dark" | "system") {
+  try {
+    localStorage.setItem("theme", theme)
+  } catch {
+    // 中文注释：隐私模式、配额或用户策略可能导致写入失败。
+  }
+}
+```
+
+Cache API 缓存响应：
+
+```ts
+async function cacheArticle(url: string) {
+  const cache = await caches.open("articles-v1")
+  const response = await fetch(url)
+
+  if (response.ok) {
+    // 中文注释：Response 流只能消费一次，缓存前按需 clone。
+    await cache.put(url, response.clone())
+  }
+
+  return response
+}
+```
+
+OPFS 写文件：
+
+```ts
+async function writeWorkspaceFile(name: string, content: string) {
+  const root = await navigator.storage.getDirectory()
+  const file = await root.getFileHandle(name, { create: true })
+  const writable = await file.createWritable()
+
+  await writable.write(content)
+  await writable.close()
+}
+```
+
+查询配额：
+
+```ts
+async function logStorageEstimate() {
+  const estimate = await navigator.storage.estimate()
+
+  // 中文注释：quota 和 usage 是估算值，不能当作精确业务配额。
+  console.table({
+    usage: estimate.usage,
+    quota: estimate.quota,
+  })
+}
+```
 
 ## 实践
 
-内容待补充...
+存储选型建议：
+
+1. 用户登录态和敏感凭证：不要放 localStorage，优先 HttpOnly Cookie 或服务端会话。
+2. 小配置：localStorage 足够，但封装异常处理和版本迁移。
+3. 大量结构化数据：IndexedDB。
+4. 离线资源：Cache API 配合 Service Worker。
+5. 大型二进制项目文件：OPFS，但要考虑浏览器支持、配额和导出备份。
+
+版本化是长期维护关键：
+
+```ts
+type StoredSettings = {
+  version: 2
+  sidebarCollapsed: boolean
+}
+
+function readSettings(): StoredSettings | null {
+  const raw = localStorage.getItem("settings")
+  if (!raw) {
+    return null
+  }
+
+  // 中文注释：真实项目应对 JSON.parse 和 version 做完整校验。
+  return JSON.parse(raw) as StoredSettings
+}
+```
 
 ## 陷阱
 
-内容待补充...
+| 常见问题 | 处理建议 |
+|---|---|
+| localStorage 存大量数据 | 改用 IndexedDB 或 OPFS |
+| 存储敏感 token | 使用 HttpOnly Cookie 或后端会话 |
+| 不处理配额失败 | 捕获 QuotaExceededError 并提供清理策略 |
+| Cache API 当数据库 | Cache 适合 Request/Response，不适合复杂查询 |
+| 认为本地数据永久存在 | 考虑浏览器清理、隐私模式、用户清除和分区存储 |
+
+## 参考资料
+
+- [MDN: Web Storage API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Storage_API)
+- [MDN: IndexedDB API](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)
+- [MDN: Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache)
+- [MDN: Origin private file system](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
+- [MDN: Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria)
